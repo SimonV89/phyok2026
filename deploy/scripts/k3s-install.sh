@@ -11,8 +11,8 @@ INSTALL_K3S_SELINUX_WARN="${INSTALL_K3S_SELINUX_WARN:-true}"
 INSTALL_K3S_SKIP_SELINUX_RPM="${INSTALL_K3S_SKIP_SELINUX_RPM:-false}"
 INGRESS_NGINX_VERSION="${INGRESS_NGINX_VERSION:-controller-v1.11.3}"
 INGRESS_NGINX_MANIFEST_PATH="${INGRESS_NGINX_MANIFEST_PATH:-${ROOT_DIR}/deploy/k8s/vendor/ingress-nginx-controller-v1.11.3-baremetal.yaml}"
-INGRESS_NGINX_CONTROLLER_IMAGE="${INGRESS_NGINX_CONTROLLER_IMAGE:-}"
-INGRESS_NGINX_WEBHOOK_IMAGE="${INGRESS_NGINX_WEBHOOK_IMAGE:-}"
+INGRESS_NGINX_CONTROLLER_IMAGE="${INGRESS_NGINX_CONTROLLER_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/registry.k8s.io/ingress-nginx/controller:v1.11.3}"
+INGRESS_NGINX_WEBHOOK_IMAGE="${INGRESS_NGINX_WEBHOOK_IMAGE:-swr.cn-north-4.myhuaweicloud.com/ddn-k8s/registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.4.4}"
 K3S_REGISTRY_DOCKER_MIRROR_PRIMARY="${K3S_REGISTRY_DOCKER_MIRROR_PRIMARY:-https://ccr.ccs.tencentyun.com}"
 K3S_REGISTRY_DOCKER_MIRROR_SECONDARY="${K3S_REGISTRY_DOCKER_MIRROR_SECONDARY:-https://mirror.ccs.tencentyun.com}"
 K3S_REGISTRY_K8S_MIRROR="${K3S_REGISTRY_K8S_MIRROR:-}"
@@ -116,6 +116,19 @@ prepare_ingress_manifest() {
   if [[ -n "${INGRESS_NGINX_WEBHOOK_IMAGE}" ]]; then
     sed -i '' "s|image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:.*|image: ${INGRESS_NGINX_WEBHOOK_IMAGE}|" "${target_file}" 2>/dev/null \
       || sed -i "s|image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:.*|image: ${INGRESS_NGINX_WEBHOOK_IMAGE}|" "${target_file}"
+  fi
+}
+
+print_ingress_debug() {
+  echo "[WARN] ingress-nginx rollout timed out. Dumping diagnostics..."
+  run_root kubectl get pods -n ingress-nginx -o wide || true
+  run_root kubectl get events -n ingress-nginx --sort-by=.lastTimestamp | tail -n 30 || true
+  run_root kubectl describe deployment ingress-nginx-controller -n ingress-nginx || true
+  local first_pod=""
+  first_pod="$(run_root kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+  if [[ -n "${first_pod}" ]]; then
+    run_root kubectl describe pod "${first_pod}" -n ingress-nginx || true
+    run_root kubectl logs "${first_pod}" -n ingress-nginx --tail=100 || true
   fi
 }
 
@@ -271,7 +284,10 @@ case "${K3S_INGRESS_EXPOSE_MODE}" in
     exit 1
     ;;
 esac
-run_root kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=300s
+if ! run_root kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=300s; then
+  print_ingress_debug
+  exit 1
+fi
 
 cat <<'EOF'
 k3s single-node installation finished.
