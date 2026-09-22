@@ -223,6 +223,8 @@ fi
 TMP_INGRESS_MANIFEST="$(mktemp)"
 trap 'rm -f "${TMP_INGRESS_MANIFEST}"' EXIT
 prepare_ingress_manifest "${TMP_INGRESS_MANIFEST}"
+run_root kubectl delete job ingress-nginx-admission-create -n ingress-nginx --ignore-not-found=true || true
+run_root kubectl delete job ingress-nginx-admission-patch -n ingress-nginx --ignore-not-found=true || true
 run_root kubectl apply -f "${TMP_INGRESS_MANIFEST}"
 
 case "${K3S_INGRESS_EXPOSE_MODE}" in
