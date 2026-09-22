@@ -8,6 +8,7 @@ resources:
   - redis/redis.yaml
   - kafka/kafka.yaml
   - qdrant/qdrant.yaml
+  - apps/web-services.yaml
   - apps/node-services.yaml
   - apps/java-services.yaml
   - apps/java-autoscaling.yaml

@@ -1,7 +1,7 @@
 import type { AttachmentDraft, InteractionAction } from "@/store/chat-slice";
 import { buildClientHeaders, getAppId } from "@/lib/auth-session";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3002";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 export type ChatStreamEvent =
   | { event: "message.started"; data: { seq: number; runId: string; conversationId: string; createdAt: number } }

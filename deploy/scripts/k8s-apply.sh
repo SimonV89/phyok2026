@@ -15,7 +15,11 @@ cd "${ROOT_DIR}"
 "${SCRIPT_DIR}/k8s-apply-env.sh"
 
 case "${GROUP}" in
-  web|cms)
+  web)
+    kubectl apply -f deploy/k8s/base/apps/web-services.yaml
+    kubectl apply -f deploy/k8s/base/ingress/platform-ingress.yaml
+    ;;
+  cms)
     echo "Group '${GROUP}' currently has no k8s manifests configured."
     ;;
   node)
@@ -37,6 +41,7 @@ case "${GROUP}" in
     kubectl apply -f deploy/k8s/base/redis/redis.yaml
     kubectl apply -f deploy/k8s/base/kafka/kafka.yaml
     kubectl apply -f deploy/k8s/base/qdrant/qdrant.yaml
+    kubectl apply -f deploy/k8s/base/apps/web-services.yaml
     kubectl apply -f deploy/k8s/base/apps/node-services.yaml
     kubectl apply -f deploy/k8s/base/apps/java-services.yaml
     kubectl apply -f deploy/k8s/base/apps/java-autoscaling.yaml

@@ -21,7 +21,11 @@ fi
 "${SCRIPT_DIR}/k8s-apply-env.sh"
 
 case "${GROUP}" in
-  web|cms)
+  web)
+    kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/apps/web-services.yaml"
+    kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/ingress/platform-ingress.yaml"
+    ;;
+  cms)
     echo "Group '${GROUP}' currently has no k3s manifests configured."
     exit 0
     ;;
@@ -42,6 +46,7 @@ case "${GROUP}" in
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/redis/redis.yaml"
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/kafka/kafka.yaml"
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/qdrant/qdrant.yaml"
+    kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/apps/web-services.yaml"
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/apps/node-services.yaml"
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/apps/java-services.yaml"
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/ingress/platform-ingress.yaml"

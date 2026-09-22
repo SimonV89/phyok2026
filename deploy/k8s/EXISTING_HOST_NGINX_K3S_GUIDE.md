@@ -11,6 +11,7 @@
 - 不让 `ingress-nginx` 抢占宿主机 `80/443`
 - 将 `ingress-nginx` 暴露为本机高位端口
 - 宿主机 Nginx 继续作为总入口，反代到 `k3s ingress-nginx`
+- 主站首页 `/` 也进入 `k3s`，由 `chat-web` 提供
 - 新系统正式前缀统一使用 `/v2`
 - `/app` 只保留旧链路/兼容语义，不作为新系统主入口
 
@@ -82,6 +83,21 @@ upstream phyok_k3s_ingress {
 然后把需要交给 k3s 的新系统路径转发给这个 upstream。基于你当前配置，建议：
 
 ```nginx
+location / {
+    proxy_pass http://phyok_k3s_ingress;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+    proxy_read_timeout 3600;
+    proxy_send_timeout 3600;
+}
+
 location ^~ /app/ {
     proxy_pass http://chat_time_legacy_api;
     proxy_http_version 1.1;
@@ -117,9 +133,10 @@ location ^~ /v2/ {
 
 这样：
 
+- `/` 会进入 k3s Ingress，再转发到 `chat-web`
 - `/app/*` 继续进入旧链路 `chat_time_legacy_api`
 - `/v2/*` 才进入 k3s Ingress，再按具体路径分发到 Java / Node 服务
-- `/`、`/openclaw/`、`/api/` 等你现有非 k3s 路径可以继续保持原样
+- `/openclaw/`、`/api/` 等你现有非 k3s 路径可以继续保持原样
 
 ## 现有配置里的注意点
 
@@ -131,5 +148,5 @@ location ^~ /v2/ {
 
 - 宿主机 Nginx：`www.phyok.com:443`
 - 反代目标：`127.0.0.1:30080`
-- `ingress-nginx`：按 `Host=www.phyok.com` 和 `/v2/*` 路径规则转发
-- `phyok` 应用：`node2-runtime` / `auth-service` / `memory-service` / `ops-admin-service` 等
+- `ingress-nginx`：按 `Host=www.phyok.com` 和 `/`、`/v2/*` 路径规则转发
+- `phyok` 应用：`chat-web` / `node2-runtime` / `auth-service` / `memory-service` / `ops-admin-service` 等

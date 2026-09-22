@@ -93,3 +93,10 @@ spec:
                 name: ops-admin-service
                 port:
                   number: 18089
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: chat-web
+                port:
+                  number: 3001

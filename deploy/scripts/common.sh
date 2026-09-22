@@ -20,6 +20,7 @@ JAVA_APP_SERVICES=(
 NODE_SERVICES=(node2-runtime)
 WEB_SERVICES=(chat-web)
 CMS_SERVICES=()
+WEB_K8S_WORKLOADS=(chat-web)
 JAVA_K8S_WORKLOADS=(
   auth-service
   tenant-service
@@ -139,7 +140,7 @@ group_k8s_workloads() {
   local group="${1:-all}"
   case "${group}" in
     web)
-      return 0
+      printf '%s\n' "${WEB_K8S_WORKLOADS[@]}"
       ;;
     cms)
       return 0
@@ -151,7 +152,7 @@ group_k8s_workloads() {
       printf '%s\n' "${JAVA_K8S_WORKLOADS[@]}"
       ;;
     all)
-      printf '%s\n' "${NODE_K8S_WORKLOADS[@]}" "${JAVA_K8S_WORKLOADS[@]}"
+      printf '%s\n' "${WEB_K8S_WORKLOADS[@]}" "${NODE_K8S_WORKLOADS[@]}" "${JAVA_K8S_WORKLOADS[@]}"
       ;;
     *)
       return 1

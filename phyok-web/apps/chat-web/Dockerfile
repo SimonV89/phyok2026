@@ -1,7 +1,7 @@
 FROM docker.m.daocloud.io/library/node:20-alpine AS build
 
 WORKDIR /app
-ARG NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3002
+ARG NEXT_PUBLIC_API_BASE_URL=
 ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 COPY package.json ./
 RUN npm install
