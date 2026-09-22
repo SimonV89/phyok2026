@@ -7,6 +7,7 @@ spring:
     password: ${POSTGRES_PASSWORD:change_me_pg}
   flyway:
     enabled: true
+    baseline-on-migrate: true
     table: flyway_schema_history_privacy
     locations: classpath:db/migration
 mybatis:
