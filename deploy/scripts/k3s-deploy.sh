@@ -96,6 +96,11 @@ workloads=()
 while IFS= read -r workload; do
   [[ -n "${workload}" ]] && workloads+=("${workload}")
 done < <(group_k8s_workloads "${GROUP}")
+
+for workload in "${workloads[@]}"; do
+  kubectl rollout restart deployment/"${workload}" -n phyok
+done
+
 for workload in "${workloads[@]}"; do
   if ! kubectl rollout status deployment/"${workload}" -n phyok --timeout=300s; then
     print_rollout_diagnostics "${workload}"
