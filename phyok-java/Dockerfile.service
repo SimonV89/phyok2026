@@ -1,17 +1,21 @@
-FROM gradle:8.10.2-jdk21 AS build
+ARG BUILD_IMAGE=gradle:8.10.2-jdk21
+ARG RUNTIME_IMAGE=eclipse-temurin:21-jre
+
+FROM ${BUILD_IMAGE} AS build
 
 WORKDIR /workspace
 COPY . .
 
 ARG GRADLE_TASK=:apps:auth-service:bootJar
-RUN gradle --no-daemon "${GRADLE_TASK}"
+ARG APP_DIR=apps/auth-service
+RUN gradle --no-daemon "${GRADLE_TASK}" \
+    && cp "$(find "/workspace/${APP_DIR}/build/libs" -maxdepth 1 -name '*.jar' | head -n 1)" /tmp/app.jar
 
-FROM eclipse-temurin:21-jre
+FROM ${RUNTIME_IMAGE}
 
 WORKDIR /app
-COPY --from=build /workspace /workspace
+COPY --from=build /tmp/app.jar /app/app.jar
 
-ARG APP_DIR=apps/auth-service
 ENV JAVA_OPTS=""
 
-ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar $(find /workspace/${APP_DIR}/build/libs -maxdepth 1 -name '*.jar' | head -n 1)"]
+ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar /app/app.jar"]

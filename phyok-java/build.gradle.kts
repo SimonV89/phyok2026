@@ -9,6 +9,9 @@ version = "0.1.0-SNAPSHOT"
 
 allprojects {
     repositories {
+        maven(url = "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
+        maven(url = "https://maven.aliyun.com/repository/public")
+        maven(url = "https://repo.huaweicloud.com/repository/maven/")
         mavenCentral()
     }
 }

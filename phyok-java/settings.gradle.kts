@@ -1,3 +1,24 @@
+pluginManagement {
+    repositories {
+        maven(url = "https://maven.aliyun.com/repository/gradle-plugin")
+        maven(url = "https://maven.aliyun.com/repository/public")
+        maven(url = "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
+        maven(url = "https://repo.huaweicloud.com/repository/maven/")
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        maven(url = "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/")
+        maven(url = "https://maven.aliyun.com/repository/public")
+        maven(url = "https://repo.huaweicloud.com/repository/maven/")
+        mavenCentral()
+    }
+}
+
 rootProject.name = "phyok-java"
 
 include(

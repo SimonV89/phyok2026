@@ -7,8 +7,9 @@ source "${SCRIPT_DIR}/common.sh"
 
 GROUP="${1:-all}"
 TARGET="${2:-}"
-GRADLE_CACHE_DIR="${ROOT_DIR}/.gradle-k3s-cache"
 GRADLE_IMAGE="${GRADLE_IMAGE:-gradle:8.10.2-jdk21}"
+JAVA_BUILD_IMAGE="${JAVA_BUILD_IMAGE:-${GRADLE_IMAGE}}"
+JAVA_RUNTIME_IMAGE="${JAVA_RUNTIME_IMAGE:-eclipse-temurin:21-jre}"
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
 K3S_BIN="${K3S_BIN:-$(command -v k3s || true)}"
 
@@ -31,8 +32,6 @@ if [[ -z "${K3S_BIN}" ]]; then
   exit 1
 fi
 
-mkdir -p "${GRADLE_CACHE_DIR}"
-
 import_image() {
   local image="$1"
   echo "Importing ${image} into k3s containerd..."
@@ -43,15 +42,14 @@ build_java_image() {
   local service="$1"
   local image="ghcr.io/your-org/phyok-${service}:latest"
   echo "Building Java image for ${service} -> ${image}"
-  docker run --rm \
-    -u "$(id -u):$(id -g)" \
-    -e GRADLE_USER_HOME=/tmp/gradle-home \
-    -v "${GRADLE_CACHE_DIR}:/tmp/gradle-home" \
-    -v "${ROOT_DIR}/phyok-java:/workspace" \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -w /workspace \
-    "${GRADLE_IMAGE}" \
-    gradle --no-daemon ":apps:${service}:bootBuildImage" "--imageName=${image}"
+  docker build \
+    -f "${ROOT_DIR}/phyok-java/Dockerfile.service" \
+    --build-arg BUILD_IMAGE="${JAVA_BUILD_IMAGE}" \
+    --build-arg RUNTIME_IMAGE="${JAVA_RUNTIME_IMAGE}" \
+    --build-arg GRADLE_TASK=":apps:${service}:bootJar" \
+    --build-arg APP_DIR="apps/${service}" \
+    -t "${image}" \
+    "${ROOT_DIR}/phyok-java"
   import_image "${image}"
 }
 
