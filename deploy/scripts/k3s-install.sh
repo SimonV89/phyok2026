@@ -7,6 +7,7 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 K3S_CHANNEL="${K3S_CHANNEL:-stable}"
 K3S_INSTALL_SCRIPT_URL="${K3S_INSTALL_SCRIPT_URL:-https://rancher-mirror.rancher.cn/k3s/k3s-install.sh}"
 K3S_INSTALL_MIRROR="${K3S_INSTALL_MIRROR:-cn}"
+INSTALL_K3S_SELINUX_WARN="${INSTALL_K3S_SELINUX_WARN:-true}"
 INGRESS_NGINX_VERSION="${INGRESS_NGINX_VERSION:-controller-v1.11.3}"
 INGRESS_NGINX_MANIFEST_PATH="${INGRESS_NGINX_MANIFEST_PATH:-${ROOT_DIR}/deploy/k8s/vendor/ingress-nginx-controller-v1.11.3-baremetal.yaml}"
 INGRESS_NGINX_CONTROLLER_IMAGE="${INGRESS_NGINX_CONTROLLER_IMAGE:-}"
@@ -19,6 +20,9 @@ K3S_REGISTRY_QUAY_MIRROR="${K3S_REGISTRY_QUAY_MIRROR:-}"
 K3S_INGRESS_EXPOSE_MODE="${K3S_INGRESS_EXPOSE_MODE:-nodePort}"
 K3S_INGRESS_HTTP_NODEPORT="${K3S_INGRESS_HTTP_NODEPORT:-30080}"
 K3S_INGRESS_HTTPS_NODEPORT="${K3S_INGRESS_HTTPS_NODEPORT:-30443}"
+TENCENT_DOCKER_REPO_URL="${TENCENT_DOCKER_REPO_URL:-https://mirrors.cloud.tencent.com/docker-ce/linux/centos/docker-ce.repo}"
+TENCENT_DOCKER_REPO_REWRITE_FROM="${TENCENT_DOCKER_REPO_REWRITE_FROM:-download.docker.com}"
+TENCENT_DOCKER_REPO_REWRITE_TO="${TENCENT_DOCKER_REPO_REWRITE_TO:-mirrors.tencentyun.com/docker-ce}"
 
 if [[ "$(uname -s)" != "Linux" ]]; then
   echo "k3s-install.sh only supports Linux."
@@ -114,6 +118,32 @@ prepare_ingress_manifest() {
   fi
 }
 
+repair_rpm_docker_repo() {
+  if [[ ! -d /etc/yum.repos.d ]]; then
+    return 0
+  fi
+
+  local docker_repo_file="/etc/yum.repos.d/docker-ce.repo"
+  local pkg_mgr=""
+
+  if command -v dnf >/dev/null 2>&1; then
+    pkg_mgr="dnf"
+    run_root dnf install -y dnf-plugins-core >/dev/null 2>&1 || true
+    run_root bash -lc "dnf config-manager --add-repo=${TENCENT_DOCKER_REPO_URL}" >/dev/null 2>&1 || true
+  elif command -v yum >/dev/null 2>&1; then
+    pkg_mgr="yum"
+    run_root yum install -y yum-utils >/dev/null 2>&1 || true
+    run_root bash -lc "yum-config-manager --add-repo=${TENCENT_DOCKER_REPO_URL}" >/dev/null 2>&1 || true
+  else
+    return 0
+  fi
+
+  if [[ -f "${docker_repo_file}" ]]; then
+    run_root sed -i "s|${TENCENT_DOCKER_REPO_REWRITE_FROM}|${TENCENT_DOCKER_REPO_REWRITE_TO}|g" "${docker_repo_file}" || true
+    run_root ${pkg_mgr} clean all >/dev/null 2>&1 || true
+  fi
+}
+
 run_root mkdir -p /etc/rancher/k3s
 run_root modprobe overlay || true
 run_root modprobe br_netfilter || true
@@ -129,8 +159,9 @@ run_root swapoff -a || true
 
 configure_docker_mirror
 configure_k3s_registries
+repair_rpm_docker_repo
 
-curl -sfL "${K3S_INSTALL_SCRIPT_URL}" | INSTALL_K3S_CHANNEL="${K3S_CHANNEL}" INSTALL_K3S_MIRROR="${K3S_INSTALL_MIRROR}" sh -s - server \
+curl -sfL "${K3S_INSTALL_SCRIPT_URL}" | INSTALL_K3S_CHANNEL="${K3S_CHANNEL}" INSTALL_K3S_MIRROR="${K3S_INSTALL_MIRROR}" INSTALL_K3S_SELINUX_WARN="${INSTALL_K3S_SELINUX_WARN}" sh -s - server \
   --write-kubeconfig-mode 644 \
   --disable traefik \
   --disable servicelb
