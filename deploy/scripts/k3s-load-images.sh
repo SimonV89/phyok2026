@@ -9,6 +9,7 @@ GROUP="${1:-all}"
 TARGET="${2:-}"
 GRADLE_CACHE_DIR="${ROOT_DIR}/.gradle-k3s-cache"
 GRADLE_IMAGE="${GRADLE_IMAGE:-gradle:8.10.2-jdk21}"
+NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
 
 if ! group_exists "${GROUP}"; then
   echo "Usage: $0 {web|cms|node|java|all} [service-name]"
@@ -52,14 +53,14 @@ build_java_image() {
 build_node_image() {
   local image="ghcr.io/your-org/phyok-node2-runtime:latest"
   echo "Building Node image -> ${image}"
-  docker build -t "${image}" "${ROOT_DIR}/phyok-node2"
+  docker build --build-arg NPM_REGISTRY="${NPM_REGISTRY}" -t "${image}" "${ROOT_DIR}/phyok-node2"
   import_image "${image}"
 }
 
 build_web_image() {
   local image="ghcr.io/your-org/phyok-chat-web:latest"
   echo "Building Web image -> ${image}"
-  docker build -t "${image}" "${ROOT_DIR}/phyok-web/apps/chat-web"
+  docker build --build-arg NPM_REGISTRY="${NPM_REGISTRY}" -t "${image}" "${ROOT_DIR}/phyok-web/apps/chat-web"
   import_image "${image}"
 }
 
