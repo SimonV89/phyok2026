@@ -9,5 +9,6 @@ dependencies {
     implementation(project(":libs:security-common"))
     implementation(project(":libs:postgres-common"))
     implementation(project(":libs:kafka-common"))
+    implementation("org.springframework.boot:spring-boot-starter-validation")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 }
