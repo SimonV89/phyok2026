@@ -17,8 +17,7 @@ if ! group_exists "${GROUP}"; then
 fi
 
 if [[ -f "${ENV_FILE}" ]]; then
-  # shellcheck disable=SC1090
-  source "${ENV_FILE}"
+  load_env_file_exports "${ENV_FILE}"
 fi
 
 if ! command -v kubectl >/dev/null 2>&1; then

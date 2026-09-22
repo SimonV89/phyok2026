@@ -14,8 +14,7 @@ if ! group_exists "${GROUP}"; then
 fi
 
 if [[ -f "${ENV_FILE}" ]]; then
-  # shellcheck disable=SC1090
-  source "${ENV_FILE}"
+  load_env_file_exports "${ENV_FILE}"
 fi
 
 if [[ -z "${SUBJECT}" ]]; then

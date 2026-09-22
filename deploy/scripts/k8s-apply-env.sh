@@ -24,10 +24,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-set -a
-# shellcheck disable=SC1090
-source "${ENV_FILE}"
-set +a
+load_env_file_exports "${ENV_FILE}"
 
 key_count=0
 while IFS= read -r key; do

@@ -74,6 +74,61 @@ require_env_file() {
   fi
 }
 
+strip_env_wrapping_quotes() {
+  local value="${1-}"
+  local first_char=""
+  local last_char=""
+
+  if [[ ${#value} -lt 2 ]]; then
+    printf '%s' "${value}"
+    return 0
+  fi
+
+  first_char="${value:0:1}"
+  last_char="${value: -1}"
+
+  if [[ "${first_char}" == "'" && "${last_char}" == "'" ]] || [[ "${first_char}" == '"' && "${last_char}" == '"' ]]; then
+    printf '%s' "${value:1:${#value}-2}"
+    return 0
+  fi
+
+  printf '%s' "${value}"
+}
+
+load_env_file_exports() {
+  local env_file="${1:-${ENV_FILE}}"
+  local raw_line=""
+  local line=""
+  local key=""
+  local value=""
+
+  if [[ ! -f "${env_file}" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r raw_line || [[ -n "${raw_line}" ]]; do
+    line="${raw_line%$'\r'}"
+
+    [[ -z "${line}" ]] && continue
+    case "${line}" in
+      \#*) continue ;;
+    esac
+
+    if [[ "${line}" == export\ * ]]; then
+      line="${line#export }"
+    fi
+
+    if [[ ! "${line}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+      continue
+    fi
+
+    key="${line%%=*}"
+    value="${line#*=}"
+    value="$(strip_env_wrapping_quotes "${value}")"
+    export "${key}=${value}"
+  done < "${env_file}"
+}
+
 services_csv_for_message() {
   local group="${1:-all}"
   local services=()

@@ -12,8 +12,7 @@ NAMESPACE="${K8S_NAMESPACE:-phyok}"
 POD_NAME="${POSTGRES_POD_NAME:-postgres-0}"
 RETENTION_DAYS="${RETENTION_DAYS:-7}"
 
-# shellcheck disable=SC1090
-source "${ENV_FILE}"
+load_env_file_exports "${ENV_FILE}"
 
 POSTGRES_DB="${POSTGRES_DB:-phyok}"
 POSTGRES_USER="${POSTGRES_USER:-phyok}"
