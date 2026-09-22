@@ -10,6 +10,7 @@ TARGET="${2:-}"
 GRADLE_CACHE_DIR="${ROOT_DIR}/.gradle-k3s-cache"
 GRADLE_IMAGE="${GRADLE_IMAGE:-gradle:8.10.2-jdk21}"
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
+K3S_BIN="${K3S_BIN:-$(command -v k3s || true)}"
 
 if ! group_exists "${GROUP}"; then
   echo "Usage: $0 {web|cms|node|java|all} [service-name]"
@@ -21,7 +22,11 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v k3s >/dev/null 2>&1; then
+if [[ -z "${K3S_BIN}" && -x /usr/local/bin/k3s ]]; then
+  K3S_BIN="/usr/local/bin/k3s"
+fi
+
+if [[ -z "${K3S_BIN}" ]]; then
   echo "k3s is required. Run deploy/scripts/k3s-install.sh first."
   exit 1
 fi
@@ -31,7 +36,7 @@ mkdir -p "${GRADLE_CACHE_DIR}"
 import_image() {
   local image="$1"
   echo "Importing ${image} into k3s containerd..."
-  docker save "${image}" | sudo k3s ctr images import -
+  docker save "${image}" | sudo "${K3S_BIN}" ctr images import -
 }
 
 build_java_image() {
