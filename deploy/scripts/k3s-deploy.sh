@@ -18,6 +18,19 @@ if ! command -v kubectl >/dev/null 2>&1; then
   exit 1
 fi
 
+wait_for_infra_group() {
+  local resource=""
+
+  for resource in \
+    statefulset/postgres \
+    deployment/redis \
+    deployment/kafka \
+    statefulset/qdrant
+  do
+    kubectl rollout status "${resource}" -n phyok --timeout=300s
+  done
+}
+
 "${SCRIPT_DIR}/k8s-apply-env.sh"
 
 case "${GROUP}" in
@@ -38,6 +51,7 @@ case "${GROUP}" in
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/redis/redis.yaml"
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/kafka/kafka.yaml"
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/qdrant/qdrant.yaml"
+    wait_for_infra_group
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/apps/java-services.yaml"
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/ingress/platform-ingress.yaml"
     ;;
@@ -46,6 +60,7 @@ case "${GROUP}" in
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/redis/redis.yaml"
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/kafka/kafka.yaml"
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/qdrant/qdrant.yaml"
+    wait_for_infra_group
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/apps/web-services.yaml"
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/apps/node-services.yaml"
     kubectl apply -n phyok -f "${ROOT_DIR}/deploy/k8s/base/apps/java-services.yaml"
@@ -60,8 +75,7 @@ while IFS= read -r workload; do
   [[ -n "${workload}" ]] && workloads+=("${workload}")
 done < <(group_k8s_workloads "${GROUP}")
 for workload in "${workloads[@]}"; do
-  kubectl scale deployment/"${workload}" -n phyok --replicas=1 || true
-  kubectl rollout status deployment/"${workload}" -n phyok --timeout=180s || true
+  kubectl rollout status deployment/"${workload}" -n phyok --timeout=300s || true
 done
 
 echo "k3s deploy finished for group '${GROUP}' with host '${PUBLIC_HOST}'."
