@@ -10,6 +10,7 @@ TARGET="${2:-}"
 GRADLE_IMAGE="${GRADLE_IMAGE:-gradle:8.10.2-jdk21}"
 JAVA_BUILD_IMAGE="${JAVA_BUILD_IMAGE:-${GRADLE_IMAGE}}"
 JAVA_RUNTIME_IMAGE="${JAVA_RUNTIME_IMAGE:-eclipse-temurin:21-jre}"
+DOCKER_BUILD_PROGRESS="${DOCKER_BUILD_PROGRESS:-plain}"
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
 K3S_BIN="${K3S_BIN:-$(command -v k3s || true)}"
 
@@ -43,6 +44,7 @@ build_java_image() {
   local image="ghcr.io/your-org/phyok-${service}:latest"
   echo "Building Java image for ${service} -> ${image}"
   docker build \
+    --progress="${DOCKER_BUILD_PROGRESS}" \
     -f "${ROOT_DIR}/phyok-java/Dockerfile.service" \
     --build-arg BUILD_IMAGE="${JAVA_BUILD_IMAGE}" \
     --build-arg RUNTIME_IMAGE="${JAVA_RUNTIME_IMAGE}" \
@@ -56,14 +58,14 @@ build_java_image() {
 build_node_image() {
   local image="ghcr.io/your-org/phyok-node2-runtime:latest"
   echo "Building Node image -> ${image}"
-  docker build --build-arg NPM_REGISTRY="${NPM_REGISTRY}" -t "${image}" "${ROOT_DIR}/phyok-node2"
+  docker build --progress="${DOCKER_BUILD_PROGRESS}" --build-arg NPM_REGISTRY="${NPM_REGISTRY}" -t "${image}" "${ROOT_DIR}/phyok-node2"
   import_image "${image}"
 }
 
 build_web_image() {
   local image="ghcr.io/your-org/phyok-chat-web:latest"
   echo "Building Web image -> ${image}"
-  docker build --build-arg NPM_REGISTRY="${NPM_REGISTRY}" -t "${image}" "${ROOT_DIR}/phyok-web/apps/chat-web"
+  docker build --progress="${DOCKER_BUILD_PROGRESS}" --build-arg NPM_REGISTRY="${NPM_REGISTRY}" -t "${image}" "${ROOT_DIR}/phyok-web/apps/chat-web"
   import_image "${image}"
 }
 

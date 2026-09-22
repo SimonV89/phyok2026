@@ -1,3 +1,5 @@
+## syntax=docker/dockerfile:1.7
+
 ARG BUILD_IMAGE=gradle:8.10.2-jdk21
 ARG RUNTIME_IMAGE=eclipse-temurin:21-jre
 
@@ -8,7 +10,9 @@ COPY . .
 
 ARG GRADLE_TASK=:apps:auth-service:bootJar
 ARG APP_DIR=apps/auth-service
-RUN gradle --no-daemon "${GRADLE_TASK}" \
+ENV GRADLE_USER_HOME=/home/gradle/.gradle
+RUN --mount=type=cache,target=/home/gradle/.gradle \
+    gradle --no-daemon --build-cache -x test --console=plain "${GRADLE_TASK}" \
     && cp "$(find "/workspace/${APP_DIR}/build/libs" -maxdepth 1 -name '*.jar' | head -n 1)" /tmp/app.jar
 
 FROM ${RUNTIME_IMAGE}
