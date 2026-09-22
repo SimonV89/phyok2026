@@ -35,7 +35,8 @@ fi
 
 import_image() {
   local image="$1"
-  echo "Importing ${image} into k3s containerd..."
+  echo "Refreshing ${image} in k3s containerd..."
+  sudo "${K3S_BIN}" ctr images rm "${image}" >/dev/null 2>&1 || true
   docker save "${image}" | sudo "${K3S_BIN}" ctr images import -
 }
 
