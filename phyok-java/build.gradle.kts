@@ -31,6 +31,10 @@ subprojects {
             mavenBom("org.springframework.boot:spring-boot-dependencies:3.3.4")
             mavenBom("org.springframework.cloud:spring-cloud-dependencies:2023.0.3")
         }
+        dependencies {
+            dependency("org.flywaydb:flyway-core:10.22.0")
+            dependency("org.flywaydb:flyway-database-postgresql:10.22.0")
+        }
     }
 
     tasks.withType<Test>().configureEach {
