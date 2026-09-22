@@ -14,6 +14,7 @@
 - 主站首页 `/` 也进入 `k3s`，由 `chat-web` 提供
 - 新系统正式前缀统一使用 `/v2`
 - `/app` 只保留旧链路/兼容语义，不作为新系统主入口
+- 安装脚本默认优先使用国内镜像链路：`k3s` 走 Rancher China，Docker Hub 镜像走腾讯云镜像加速
 
 ## 推荐端口
 
@@ -28,6 +29,15 @@
 
 ```bash
 cd /path/to/phyok
+./deploy/scripts/k3s-install-host-nginx.sh
+```
+
+如需显式指定腾讯云镜像地址：
+
+```bash
+cd /path/to/phyok
+K3S_REGISTRY_DOCKER_MIRROR_PRIMARY=https://ccr.ccs.tencentyun.com \
+K3S_REGISTRY_DOCKER_MIRROR_SECONDARY=https://mirror.ccs.tencentyun.com \
 ./deploy/scripts/k3s-install-host-nginx.sh
 ```
 

@@ -20,6 +20,7 @@
 - 发布方式：`kubectl apply`
 - 环境变量来源：统一读取根目录 `env2`，部署时自动同步到 K8s `Secret`
 - 默认建议：`ingress-nginx` 使用 `NodePort`，宿主机已有 Nginx 时由宿主机继续处理 `80/443`
+- 默认安装源策略：`k3s` 安装脚本走国内 Rancher China 镜像；Docker / k3s 的 Docker Hub 镜像优先走腾讯云镜像加速
 - 主站首页 `/` 推荐也接入 `k3s`，由 `chat-web` 提供
 - 新系统正式对外接口前缀统一为 `/v2`
 - `/app` 仅保留旧链路兼容，不作为新系统主入口
@@ -55,6 +56,14 @@ K3S_INGRESS_EXPOSE_MODE=hostNetwork ./deploy/scripts/k3s-install.sh
 如果宿主机已经有主 Nginx，推荐直接使用：
 
 ```bash
+./deploy/scripts/k3s-install-host-nginx.sh
+```
+
+如果你希望显式指定腾讯云镜像参数，可以这样执行：
+
+```bash
+K3S_REGISTRY_DOCKER_MIRROR_PRIMARY=https://ccr.ccs.tencentyun.com \
+K3S_REGISTRY_DOCKER_MIRROR_SECONDARY=https://mirror.ccs.tencentyun.com \
 ./deploy/scripts/k3s-install-host-nginx.sh
 ```
 
@@ -125,8 +134,10 @@ BACKUP_CRON="0 3 * * *" HEALTHCHECK_CRON="*/10 * * * *" ./deploy/scripts/k3s-ins
 
 - `deploy/scripts/k3s-install.sh`
   - 安装 K3s
+  - 默认通过 `https://rancher-mirror.rancher.cn/k3s/k3s-install.sh` 安装，不再直接走 `get.k3s.io`
+  - 默认为 Docker 与 k3s/containerd 写入腾讯云镜像加速配置
   - 禁用默认 `traefik`
-  - 安装 `ingress-nginx`
+  - 使用仓库内置的 `ingress-nginx` 清单，不再运行时拉取 GitHub Raw
   - 默认以 `NodePort` 暴露 `ingress-nginx`
   - 可通过 `K3S_INGRESS_EXPOSE_MODE=hostNetwork` 切换成宿主机直绑 `80/443`
 
@@ -184,6 +195,11 @@ BACKUP_CRON="0 3 * * *" HEALTHCHECK_CRON="*/10 * * * *" ./deploy/scripts/k3s-ins
 
 - 当前单机 K3s 脚本更适合 `node/java/all`，`web/cms` 还没有完整 K8s 清单。
 - 当前项目镜像名沿用 `ghcr.io/your-org/...` 形式，但实际镜像由本地脚本构建并导入，不依赖远端仓库。
+- 腾讯云镜像加速对 `docker.io` 最友好；如果你还想让 `registry.k8s.io`、`quay.io`、`ghcr.io` 也走国内源，请额外设置：
+  - `K3S_REGISTRY_K8S_MIRROR`
+  - `K3S_REGISTRY_QUAY_MIRROR`
+  - `K3S_REGISTRY_GHCR_MIRROR`
+- `ingress-nginx` 默认清单已经放进仓库本地 `deploy/k8s/vendor/`，安装时不会再从国外地址下载 YAML。
 - 单机模式下不建议启用 HPA/PDB；本次脚本也没有使用这两类资源。
 - 数据库类组件当前仍是单副本，单机故障时不可用，生产期需要配合备份。
 - `alert.sh` 是否能真正发邮件，取决于服务器是否装有 `mail`/`sendmail` 以及是否配置了 `ALERT_EMAIL_TO`、`ALERT_EMAIL_FROM`。

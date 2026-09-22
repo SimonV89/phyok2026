@@ -1,4 +1,4 @@
-FROM docker.m.daocloud.io/library/node:20-alpine AS build
+FROM node:20-alpine AS build
 
 WORKDIR /app
 ARG NEXT_PUBLIC_API_BASE_URL=
@@ -8,7 +8,7 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-FROM docker.m.daocloud.io/library/node:20-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 COPY package.json ./

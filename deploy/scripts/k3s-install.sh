@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
 K3S_CHANNEL="${K3S_CHANNEL:-stable}"
+K3S_INSTALL_SCRIPT_URL="${K3S_INSTALL_SCRIPT_URL:-https://rancher-mirror.rancher.cn/k3s/k3s-install.sh}"
+K3S_INSTALL_MIRROR="${K3S_INSTALL_MIRROR:-cn}"
 INGRESS_NGINX_VERSION="${INGRESS_NGINX_VERSION:-controller-v1.11.3}"
+INGRESS_NGINX_MANIFEST_PATH="${INGRESS_NGINX_MANIFEST_PATH:-${ROOT_DIR}/deploy/k8s/vendor/ingress-nginx-controller-v1.11.3-baremetal.yaml}"
+INGRESS_NGINX_CONTROLLER_IMAGE="${INGRESS_NGINX_CONTROLLER_IMAGE:-}"
+INGRESS_NGINX_WEBHOOK_IMAGE="${INGRESS_NGINX_WEBHOOK_IMAGE:-}"
+K3S_REGISTRY_DOCKER_MIRROR_PRIMARY="${K3S_REGISTRY_DOCKER_MIRROR_PRIMARY:-https://ccr.ccs.tencentyun.com}"
+K3S_REGISTRY_DOCKER_MIRROR_SECONDARY="${K3S_REGISTRY_DOCKER_MIRROR_SECONDARY:-https://mirror.ccs.tencentyun.com}"
+K3S_REGISTRY_K8S_MIRROR="${K3S_REGISTRY_K8S_MIRROR:-}"
+K3S_REGISTRY_GHCR_MIRROR="${K3S_REGISTRY_GHCR_MIRROR:-}"
+K3S_REGISTRY_QUAY_MIRROR="${K3S_REGISTRY_QUAY_MIRROR:-}"
 K3S_INGRESS_EXPOSE_MODE="${K3S_INGRESS_EXPOSE_MODE:-nodePort}"
 K3S_INGRESS_HTTP_NODEPORT="${K3S_INGRESS_HTTP_NODEPORT:-30080}"
 K3S_INGRESS_HTTPS_NODEPORT="${K3S_INGRESS_HTTPS_NODEPORT:-30443}"
@@ -25,6 +38,82 @@ run_root() {
   fi
 }
 
+configure_docker_mirror() {
+  if ! command -v docker >/dev/null 2>&1; then
+    return 0
+  fi
+
+  run_root mkdir -p /etc/docker
+  if [[ -f /etc/docker/daemon.json && ! -f /etc/docker/daemon.json.phyok.bak ]]; then
+    run_root cp /etc/docker/daemon.json /etc/docker/daemon.json.phyok.bak
+  fi
+
+  cat <<EOF | run_root tee /etc/docker/daemon.json >/dev/null
+{
+  "registry-mirrors": [
+    "${K3S_REGISTRY_DOCKER_MIRROR_PRIMARY}",
+    "${K3S_REGISTRY_DOCKER_MIRROR_SECONDARY}"
+  ],
+  "features": {
+    "buildkit": true
+  }
+}
+EOF
+
+  run_root systemctl daemon-reload || true
+  run_root systemctl restart docker || true
+}
+
+configure_k3s_registries() {
+  run_root mkdir -p /etc/rancher/k3s
+  cat <<EOF | run_root tee /etc/rancher/k3s/registries.yaml >/dev/null
+mirrors:
+  docker.io:
+    endpoint:
+      - "${K3S_REGISTRY_DOCKER_MIRROR_PRIMARY}"
+      - "${K3S_REGISTRY_DOCKER_MIRROR_SECONDARY}"
+EOF
+
+  if [[ -n "${K3S_REGISTRY_K8S_MIRROR}" ]]; then
+    cat <<EOF | run_root tee -a /etc/rancher/k3s/registries.yaml >/dev/null
+  registry.k8s.io:
+    endpoint:
+      - "${K3S_REGISTRY_K8S_MIRROR}"
+EOF
+  fi
+
+  if [[ -n "${K3S_REGISTRY_GHCR_MIRROR}" ]]; then
+    cat <<EOF | run_root tee -a /etc/rancher/k3s/registries.yaml >/dev/null
+  ghcr.io:
+    endpoint:
+      - "${K3S_REGISTRY_GHCR_MIRROR}"
+EOF
+  fi
+
+  if [[ -n "${K3S_REGISTRY_QUAY_MIRROR}" ]]; then
+    cat <<EOF | run_root tee -a /etc/rancher/k3s/registries.yaml >/dev/null
+  quay.io:
+    endpoint:
+      - "${K3S_REGISTRY_QUAY_MIRROR}"
+EOF
+  fi
+}
+
+prepare_ingress_manifest() {
+  local target_file="$1"
+  cp "${INGRESS_NGINX_MANIFEST_PATH}" "${target_file}"
+
+  if [[ -n "${INGRESS_NGINX_CONTROLLER_IMAGE}" ]]; then
+    sed -i '' "s|image: registry.k8s.io/ingress-nginx/controller:.*|image: ${INGRESS_NGINX_CONTROLLER_IMAGE}|" "${target_file}" 2>/dev/null \
+      || sed -i "s|image: registry.k8s.io/ingress-nginx/controller:.*|image: ${INGRESS_NGINX_CONTROLLER_IMAGE}|" "${target_file}"
+  fi
+
+  if [[ -n "${INGRESS_NGINX_WEBHOOK_IMAGE}" ]]; then
+    sed -i '' "s|image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:.*|image: ${INGRESS_NGINX_WEBHOOK_IMAGE}|" "${target_file}" 2>/dev/null \
+      || sed -i "s|image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:.*|image: ${INGRESS_NGINX_WEBHOOK_IMAGE}|" "${target_file}"
+  fi
+}
+
 run_root mkdir -p /etc/rancher/k3s
 run_root modprobe overlay || true
 run_root modprobe br_netfilter || true
@@ -38,7 +127,10 @@ EOF
 run_root sysctl --system >/dev/null
 run_root swapoff -a || true
 
-curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL="${K3S_CHANNEL}" sh -s - server \
+configure_docker_mirror
+configure_k3s_registries
+
+curl -sfL "${K3S_INSTALL_SCRIPT_URL}" | INSTALL_K3S_CHANNEL="${K3S_CHANNEL}" INSTALL_K3S_MIRROR="${K3S_INSTALL_MIRROR}" sh -s - server \
   --write-kubeconfig-mode 644 \
   --disable traefik \
   --disable servicelb
@@ -46,7 +138,15 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL="${K3S_CHANNEL}" sh -s - serv
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 run_root kubectl wait --for=condition=Ready node --all --timeout=300s
 
-run_root kubectl apply -f "https://raw.githubusercontent.com/kubernetes/ingress-nginx/${INGRESS_NGINX_VERSION}/deploy/static/provider/baremetal/deploy.yaml"
+if [[ ! -f "${INGRESS_NGINX_MANIFEST_PATH}" ]]; then
+  echo "Missing ingress manifest: ${INGRESS_NGINX_MANIFEST_PATH}"
+  exit 1
+fi
+
+TMP_INGRESS_MANIFEST="$(mktemp)"
+trap 'rm -f "${TMP_INGRESS_MANIFEST}"' EXIT
+prepare_ingress_manifest "${TMP_INGRESS_MANIFEST}"
+run_root kubectl apply -f "${TMP_INGRESS_MANIFEST}"
 
 case "${K3S_INGRESS_EXPOSE_MODE}" in
   hostNetwork)
@@ -113,6 +213,8 @@ cat <<'EOF'
 k3s single-node installation finished.
 - Open Tencent Cloud security group ports: 80, 443, 6443
 - Kubeconfig: /etc/rancher/k3s/k3s.yaml
+- Docker mirror: Tencent Cloud mirror first
+- k3s installer: Rancher China mirror
 EOF
 if [[ "${K3S_INGRESS_EXPOSE_MODE}" == "hostNetwork" ]]; then
   echo "- Ingress controller mode: hostNetwork (ingress-nginx binds host 80/443)"
