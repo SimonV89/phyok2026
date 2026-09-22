@@ -14,9 +14,10 @@ if ! command -v k3s >/dev/null 2>&1; then
   exit 1
 fi
 
-"${SCRIPT_DIR}/k3s-load-images.sh" node
-"${SCRIPT_DIR}/k3s-load-images.sh" java
-PUBLIC_HOST="${PUBLIC_HOST}" "${SCRIPT_DIR}/k3s-deploy.sh" all
+bash "${SCRIPT_DIR}/k3s-load-images.sh" web
+bash "${SCRIPT_DIR}/k3s-load-images.sh" node
+bash "${SCRIPT_DIR}/k3s-load-images.sh" java
+PUBLIC_HOST="${PUBLIC_HOST}" bash "${SCRIPT_DIR}/k3s-deploy.sh" all
 
 cat <<EOF
 
