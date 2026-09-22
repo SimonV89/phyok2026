@@ -67,6 +67,14 @@ K3S_REGISTRY_DOCKER_MIRROR_SECONDARY=https://mirror.ccs.tencentyun.com \
 ./deploy/scripts/k3s-install-host-nginx.sh
 ```
 
+如果服务器上的 Docker 还没装，或现有 Docker 源已经坏掉，先执行：
+
+```bash
+./deploy/scripts/install-docker-cn.sh
+```
+
+该脚本会优先把 Docker CE 仓库切到腾讯云 Yum 源，并写入腾讯云镜像加速配置。
+
 2. 构建并导入项目镜像
 
 ```bash
@@ -149,6 +157,11 @@ BACKUP_CRON="0 3 * * *" HEALTHCHECK_CRON="*/10 * * * *" ./deploy/scripts/k3s-ins
 - `deploy/scripts/k3s-install-host-nginx.sh`
   - 宿主机已有主 Nginx 时的一键安装入口
   - 默认将 `ingress-nginx` 暴露到 `30080/30443`
+
+- `deploy/scripts/install-docker-cn.sh`
+  - 优先使用腾讯云 Docker CE Yum 源修复或安装 Docker
+  - 自动把 `download.docker.com` 重写为腾讯云域名
+  - 自动写入 Docker 镜像加速配置
 
 - `deploy/scripts/k3s-project-up.sh`
   - 一键构建镜像、导入 k3s、发布项目

@@ -9,9 +9,20 @@ if ! command -v kubectl >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v docker >/dev/null 2>&1; then
+  echo "docker is missing, installing from Tencent mirror..."
+  bash "${SCRIPT_DIR}/install-docker-cn.sh"
+fi
+
 if ! command -v k3s >/dev/null 2>&1; then
   echo "k3s is required. Run ${SCRIPT_DIR}/k3s-install-host-nginx.sh first."
   exit 1
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  echo "docker is not ready, attempting to repair Tencent mirror configuration..."
+  bash "${SCRIPT_DIR}/install-docker-cn.sh"
+  docker info >/dev/null
 fi
 
 bash "${SCRIPT_DIR}/k3s-load-images.sh" web
