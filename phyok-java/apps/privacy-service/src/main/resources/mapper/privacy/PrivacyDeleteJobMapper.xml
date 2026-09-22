@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.phyok.privacy.infrastructure.mybatis.mapper.PrivacyDeleteJobMapper">
+
+    <resultMap id="PrivacyDeleteJobResultMap" type="com.phyok.privacy.infrastructure.mybatis.entity.PrivacyDeleteJobDO">
+        <id property="jobId" column="job_id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="appId" column="app_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="scope" column="scope"/>
+        <result property="status" column="status"/>
+        <result property="affectedCount" column="affected_count"/>
+        <result property="requestedBy" column="requested_by"/>
+        <result property="reason" column="reason"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.phyok.privacy.infrastructure.mybatis.entity.PrivacyDeleteJobDO">
+        insert into privacy_delete_job (
+            job_id,
+            tenant_id,
+            app_id,
+            user_id,
+            scope,
+            status,
+            affected_count,
+            requested_by,
+            reason,
+            created_at,
+            updated_at
+        ) values (
+            #{jobId},
+            #{tenantId},
+            #{appId},
+            #{userId},
+            #{scope},
+            #{status},
+            #{affectedCount},
+            #{requestedBy},
+            #{reason},
+            #{createdAt},
+            #{createdAt}
+        )
+    </insert>
+
+    <update id="updateExecutionResult">
+        update privacy_delete_job
+        set status = #{status},
+            affected_count = #{affectedCount},
+            updated_at = now()
+        where job_id = #{jobId}
+    </update>
+
+    <select id="countJobs" resultType="int">
+        select count(1)
+        from privacy_delete_job
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+        <if test="userId != null and userId != ''">
+          and user_id = #{userId}
+        </if>
+        <if test="status != null and status != ''">
+          and status = #{status}
+        </if>
+    </select>
+
+    <select id="selectJobsPage" resultMap="PrivacyDeleteJobResultMap">
+        select job_id,
+               tenant_id,
+               app_id,
+               user_id,
+               scope,
+               status,
+               affected_count,
+               requested_by,
+               reason,
+               created_at
+        from privacy_delete_job
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+        <if test="userId != null and userId != ''">
+          and user_id = #{userId}
+        </if>
+        <if test="status != null and status != ''">
+          and status = #{status}
+        </if>
+        order by created_at desc, job_id desc
+        limit #{limit}
+        offset #{offset}
+    </select>
+</mapper>

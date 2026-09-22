@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package phyok.internal.memory.v1;
+
+service MemoryGateService {
+  rpc CheckMemoryGate (CheckMemoryGateRequest) returns (CheckMemoryGateResponse);
+}
+
+service MemoryRecallService {
+  rpc RecallMemory (RecallMemoryRequest) returns (RecallMemoryResponse);
+}
+
+message CheckMemoryGateRequest {
+  string user_id = 1;
+  string session_id = 2;
+  string conversation_id = 3;
+  int32 required_count = 4;
+}
+
+message CheckMemoryGateResponse {
+  bool passed = 1;
+  int32 current_count = 2;
+  int32 required_count = 3;
+}
+
+message RecallMemoryRequest {
+  string user_id = 1;
+  string query = 2;
+  int32 top_k = 3;
+  repeated string tags = 4;
+}
+
+message RecallMemoryItem {
+  string fragment_id = 1;
+  string content = 2;
+  double score = 3;
+  string source = 4;
+}
+
+message RecallMemoryResponse {
+  repeated RecallMemoryItem items = 1;
+}

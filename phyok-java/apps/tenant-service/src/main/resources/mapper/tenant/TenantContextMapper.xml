@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.phyok.tenant.infrastructure.mybatis.mapper.TenantContextMapper">
+
+    <resultMap id="TenantAppContextResultMap" type="com.phyok.tenant.infrastructure.mybatis.entity.TenantAppContextDO">
+        <result property="tenantId" column="tenant_id"/>
+        <result property="appId" column="app_id"/>
+        <result property="tenantCode" column="tenant_code"/>
+        <result property="appCode" column="app_code"/>
+        <result property="planCode" column="plan_code"/>
+    </resultMap>
+
+    <select id="selectTenantAppContext" resultMap="TenantAppContextResultMap">
+        select t.id as tenant_id,
+               a.id as app_id,
+               t.tenant_code,
+               a.app_code,
+               t.plan_code
+        from tenant t
+                 join app a on a.tenant_id = t.id
+        where t.id = #{tenantId}
+          and a.id = #{appId}
+          and t.deleted = false
+          and a.deleted = false
+        limit 1
+    </select>
+
+    <update id="softDeleteTenant">
+        update tenant
+        set status = 'DELETED',
+            deleted = true,
+            updated_at = now(),
+            version = version + 1
+        where id = #{tenantId}
+          and deleted = false
+    </update>
+
+    <update id="softDeleteApp">
+        update app
+        set status = 'DELETED',
+            deleted = true,
+            updated_at = now(),
+            version = version + 1
+        where tenant_id = #{tenantId}
+          and id = #{appId}
+          and deleted = false
+    </update>
+</mapper>

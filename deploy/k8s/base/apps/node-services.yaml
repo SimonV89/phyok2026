@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node2-runtime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: node2-runtime
+  template:
+    metadata:
+      labels:
+        app: node2-runtime
+    spec:
+      containers:
+        - name: node2-runtime
+          image: ghcr.io/your-org/phyok-node2-runtime:latest
+          ports:
+            - containerPort: 3002
+          envFrom:
+            - configMapRef:
+                name: phyok-platform-config
+            - secretRef:
+                name: phyok-platform-secret
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3002
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3002
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node2-runtime
+spec:
+  selector:
+    app: node2-runtime
+  ports:
+    - port: 3002
+      targetPort: 3002

@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: billing-service
+server:
+  port: ${BILLING_PORT:18085}

@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: ops-admin-service
+phyok:
+  ops-admin:
+    total-users: ${OPS_ADMIN_TOTAL_USERS:1024}
+    paid-users: ${OPS_ADMIN_PAID_USERS:188}
+    complaint-count: ${OPS_ADMIN_COMPLAINT_COUNT:3}
+    audit-event-count: ${OPS_ADMIN_AUDIT_EVENT_COUNT:98452}
+    cpu-load: ${OPS_ADMIN_CPU_LOAD:0.41}
+    memory-usage: ${OPS_ADMIN_MEMORY_USAGE:61%}
+    disk-usage: ${OPS_ADMIN_DISK_USAGE:54%}
+server:
+  port: ${OPS_ADMIN_PORT:18089}

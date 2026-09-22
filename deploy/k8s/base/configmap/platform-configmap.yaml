@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: phyok-platform-config
+data:
+  SPRING_PROFILES_ACTIVE: "k8s"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "phyok"
+  POSTGRES_USER: "phyok"
+  POSTGRES_PASSWORD: "change_me_pg"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  QDRANT_URL: "http://qdrant:6333"
+  NODE2_PORT: "3002"
+  CLIENT_BASE_URL: "https://www.phyok.com"
+  APP_BASE_URL: "https://www.phyok.com"

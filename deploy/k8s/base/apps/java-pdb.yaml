@@ -1,0 +1,29 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: auth-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: memory-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: memory-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ops-admin-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ops-admin-service

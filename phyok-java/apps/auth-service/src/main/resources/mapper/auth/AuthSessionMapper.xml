@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.phyok.auth.infrastructure.mybatis.mapper.AuthSessionMapper">
+
+    <resultMap id="AuthSessionPrincipalResultMap" type="com.phyok.auth.infrastructure.mybatis.entity.AuthSessionPrincipalDO">
+        <result property="tenantId" column="tenant_id"/>
+        <result property="appId" column="app_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="sessionId" column="session_id"/>
+    </resultMap>
+
+    <resultMap id="UserAccountResultMap" type="com.phyok.auth.infrastructure.mybatis.entity.UserAccountDO">
+        <id property="id" column="id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="appId" column="app_id"/>
+        <result property="email" column="email"/>
+        <result property="displayName" column="display_name"/>
+        <result property="status" column="status"/>
+        <result property="registerSource" column="register_source"/>
+    </resultMap>
+
+    <select id="selectPrincipalBySessionTokenHash" resultMap="AuthSessionPrincipalResultMap">
+        select s.tenant_id,
+               s.app_id,
+               s.user_id,
+               s.id as session_id
+        from user_session s
+                 join user_account u
+                      on u.id = s.user_id
+                     and u.tenant_id = s.tenant_id
+                     and u.app_id = s.app_id
+        where s.session_token_hash = #{sessionTokenHash}
+          and s.revoked = false
+          and s.expired_at > now()
+          and u.deleted = false
+          and u.status = 'ACTIVE'
+        limit 1
+    </select>
+
+    <select id="selectUserByEmail" resultMap="UserAccountResultMap">
+        select id,
+               tenant_id,
+               app_id,
+               email,
+               display_name,
+               status,
+               register_source
+        from user_account
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and email = #{email}
+          and deleted = false
+        limit 1
+    </select>
+
+    <insert id="insertUser">
+        insert into user_account (
+            id, tenant_id, app_id, email, display_name, status, register_source, deleted, version, created_at, updated_at
+        ) values (
+            #{id}, #{tenantId}, #{appId}, #{email}, #{displayName}, #{status}, #{registerSource}, false, 0, now(), now()
+        )
+    </insert>
+
+    <update id="touchUserLastLoginAt">
+        update user_account
+        set last_login_at = now(),
+            updated_at = now(),
+            version = version + 1
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and id = #{userId}
+    </update>
+
+    <update id="revokeActiveSessions">
+        update user_session
+        set revoked = true
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and user_id = #{userId}
+          and revoked = false
+          and expired_at > now()
+    </update>
+
+    <update id="softDeleteUserAccount">
+        update user_account
+        set email = null,
+            mobile = null,
+            display_name = 'ERASED_USER',
+            status = 'DELETED',
+            deleted = true,
+            updated_at = now(),
+            version = version + 1
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and id = #{userId}
+          and deleted = false
+    </update>
+
+    <insert id="insertSession">
+        insert into user_session (
+            id, tenant_id, app_id, user_id, session_token_hash, refresh_token_hash, device_id, client_version, expired_at, revoked, created_at
+        ) values (
+            #{id}, #{tenantId}, #{appId}, #{userId}, #{sessionTokenHash}, #{refreshTokenHash}, #{deviceId}, #{clientVersion}, #{expiredAt}, false, now()
+        )
+    </insert>
+</mapper>

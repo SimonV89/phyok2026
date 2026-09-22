@@ -1,0 +1,17 @@
+FROM gradle:8.10.2-jdk21 AS build
+
+WORKDIR /workspace
+COPY . .
+
+ARG GRADLE_TASK=:apps:auth-service:bootJar
+RUN gradle --no-daemon "${GRADLE_TASK}"
+
+FROM eclipse-temurin:21-jre
+
+WORKDIR /app
+COPY --from=build /workspace /workspace
+
+ARG APP_DIR=apps/auth-service
+ENV JAVA_OPTS=""
+
+ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar $(find /workspace/${APP_DIR}/build/libs -maxdepth 1 -name '*.jar' | head -n 1)"]

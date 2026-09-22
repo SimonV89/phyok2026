@@ -1,0 +1,27 @@
+# Keep root runtime env committed for this project.
+!env2
+
+# Legacy / non-target workspaces
+/phyok-app/
+/phyok-node/
+
+# Node / frontend build outputs
+**/node_modules/
+**/.next/
+**/dist/
+**/coverage/
+**/*.tsbuildinfo
+
+# Java / Gradle build outputs
+**/.gradle/
+**/build/
+/.gradle-cache/
+/.gradle-k3s-cache/
+
+# Deployment runtime artifacts
+/deploy/backups/
+/GSB00001646198.cer
+
+# OS / editor noise
+.DS_Store
+*.log

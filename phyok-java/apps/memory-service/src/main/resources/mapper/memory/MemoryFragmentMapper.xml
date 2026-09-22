@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.phyok.memory.infrastructure.mybatis.mapper.MemoryFragmentMapper">
+
+    <resultMap id="MemoryFragmentResultMap" type="com.phyok.memory.infrastructure.mybatis.entity.MemoryFragmentDO">
+        <id property="id" column="id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="appId" column="app_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="timelineRoot" column="timeline_root"/>
+        <result property="contentText" column="content_text"/>
+        <result property="searchable" column="searchable"/>
+        <result property="deleted" column="deleted"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.phyok.memory.infrastructure.mybatis.entity.MemoryFragmentDO">
+        insert into memory_fragment (
+            id,
+            tenant_id,
+            app_id,
+            user_id,
+            timeline_root,
+            content_text,
+            searchable,
+            deleted,
+            created_at,
+            updated_at
+        ) values (
+            #{id},
+            #{tenantId},
+            #{appId},
+            #{userId},
+            #{timelineRoot},
+            #{contentText},
+            #{searchable},
+            #{deleted},
+            #{createdAt},
+            #{createdAt}
+        )
+    </insert>
+
+    <select id="selectById" resultMap="MemoryFragmentResultMap">
+        select id,
+               tenant_id,
+               app_id,
+               user_id,
+               timeline_root,
+               content_text,
+               searchable,
+               deleted,
+               created_at
+        from memory_fragment
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and user_id = #{userId}
+          and id = #{id}
+          and deleted = false
+        limit 1
+    </select>
+
+    <update id="updateById" parameterType="com.phyok.memory.infrastructure.mybatis.entity.MemoryFragmentDO">
+        update memory_fragment
+        set timeline_root = #{timelineRoot},
+            content_text = #{contentText},
+            searchable = #{searchable},
+            updated_at = now()
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and user_id = #{userId}
+          and id = #{id}
+          and deleted = false
+    </update>
+
+    <update id="softDeleteById">
+        update memory_fragment
+        set deleted = true,
+            searchable = false,
+            updated_at = now()
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and user_id = #{userId}
+          and id = #{id}
+          and deleted = false
+    </update>
+
+    <update id="softDeleteByUser">
+        update memory_fragment
+        set deleted = true,
+            searchable = false,
+            updated_at = now()
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and user_id = #{userId}
+          and deleted = false
+    </update>
+
+    <select id="countSearchableFragments" resultType="int">
+        select count(1)
+        from memory_fragment
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and user_id = #{userId}
+          and deleted = false
+          and searchable = true
+    </select>
+
+    <select id="countFragments" resultType="int">
+        select count(1)
+        from memory_fragment
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and user_id = #{userId}
+          and deleted = false
+        <if test="timelineRoot != null and timelineRoot != ''">
+          and timeline_root = #{timelineRoot}
+        </if>
+    </select>
+
+    <select id="selectLatestSearchableFragments" resultMap="MemoryFragmentResultMap">
+        select id,
+               tenant_id,
+               app_id,
+               user_id,
+               timeline_root,
+               content_text,
+               searchable,
+               deleted,
+               created_at
+        from memory_fragment
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and user_id = #{userId}
+          and deleted = false
+          and searchable = true
+        order by created_at desc, id desc
+        limit #{limit}
+    </select>
+
+    <select id="selectFragmentsPage" resultMap="MemoryFragmentResultMap">
+        select id,
+               tenant_id,
+               app_id,
+               user_id,
+               timeline_root,
+               content_text,
+               searchable,
+               deleted,
+               created_at
+        from memory_fragment
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and user_id = #{userId}
+          and deleted = false
+        <if test="timelineRoot != null and timelineRoot != ''">
+          and timeline_root = #{timelineRoot}
+        </if>
+        order by created_at desc, id desc
+        limit #{limit}
+        offset #{offset}
+    </select>
+</mapper>

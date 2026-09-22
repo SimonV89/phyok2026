@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.phyok.audit.infrastructure.mybatis.mapper.AuditEventMapper">
+
+    <resultMap id="AuditEventResultMap" type="com.phyok.audit.infrastructure.mybatis.entity.AuditEventDO">
+        <id property="id" column="id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="appId" column="app_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="traceId" column="trace_id"/>
+        <result property="requestId" column="request_id"/>
+        <result property="eventType" column="event_type"/>
+        <result property="sourceService" column="source_service"/>
+        <result property="entityType" column="entity_type"/>
+        <result property="entityId" column="entity_id"/>
+        <result property="payloadJson" column="payload_json"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.phyok.audit.infrastructure.mybatis.entity.AuditEventDO">
+        insert into audit_event (
+            id,
+            tenant_id,
+            app_id,
+            user_id,
+            trace_id,
+            request_id,
+            event_type,
+            source_service,
+            entity_type,
+            entity_id,
+            payload_json,
+            created_at
+        ) values (
+            #{id},
+            #{tenantId},
+            #{appId},
+            #{userId},
+            #{traceId},
+            #{requestId},
+            #{eventType},
+            #{sourceService},
+            #{entityType},
+            #{entityId},
+            #{payloadJson},
+            #{createdAt}
+        )
+    </insert>
+
+    <select id="countEvents" resultType="int">
+        select count(1)
+        from audit_event
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+        <if test="userId != null and userId != ''">
+          and user_id = #{userId}
+        </if>
+        <if test="eventType != null and eventType != ''">
+          and event_type = #{eventType}
+        </if>
+        <if test="entityType != null and entityType != ''">
+          and entity_type = #{entityType}
+        </if>
+        <if test="entityId != null and entityId != ''">
+          and entity_id = #{entityId}
+        </if>
+    </select>
+
+    <select id="selectEventsPage" resultMap="AuditEventResultMap">
+        select id,
+               tenant_id,
+               app_id,
+               user_id,
+               trace_id,
+               request_id,
+               event_type,
+               source_service,
+               entity_type,
+               entity_id,
+               payload_json,
+               created_at
+        from audit_event
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+        <if test="userId != null and userId != ''">
+          and user_id = #{userId}
+        </if>
+        <if test="eventType != null and eventType != ''">
+          and event_type = #{eventType}
+        </if>
+        <if test="entityType != null and entityType != ''">
+          and entity_type = #{entityType}
+        </if>
+        <if test="entityId != null and entityId != ''">
+          and entity_id = #{entityId}
+        </if>
+        order by created_at desc, id desc
+        limit #{limit}
+        offset #{offset}
+    </select>
+</mapper>

@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: privacy-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:phyok}
+    username: ${POSTGRES_USER:phyok}
+    password: ${POSTGRES_PASSWORD:change_me_pg}
+  flyway:
+    enabled: true
+    table: flyway_schema_history_privacy
+    locations: classpath:db/migration
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.phyok.privacy.infrastructure.mybatis.entity
+  configuration:
+    map-underscore-to-camel-case: true
+phyok:
+  privacy:
+    memory-base-url: "${MEMORY_INTERNAL_BASE_URL:http://memory-service:18083}"
+    auth-base-url: "${AUTH_INTERNAL_BASE_URL:http://auth-service:18081}"
+    tenant-base-url: "${TENANT_INTERNAL_BASE_URL:http://tenant-service:18082}"
+    audit-enabled: ${PRIVACY_AUDIT_ENABLED:true}
+    audit-base-url: "${AUDIT_INTERNAL_BASE_URL:http://audit-service:18087}"
+server:
+  port: ${PRIVACY_PORT:18088}

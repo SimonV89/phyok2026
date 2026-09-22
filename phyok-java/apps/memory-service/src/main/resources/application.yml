@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: memory-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:phyok}
+    username: ${POSTGRES_USER:phyok}
+    password: ${POSTGRES_PASSWORD:change_me_pg}
+  flyway:
+    enabled: true
+    table: flyway_schema_history_memory
+    locations: classpath:db/migration
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.phyok.memory.infrastructure.mybatis.entity
+  configuration:
+    map-underscore-to-camel-case: true
+phyok:
+  memory:
+    gate-required-count: ${MEMORY_GATE_REQUIRED_COUNT:5}
+    preview-top-k: ${MEMORY_PREVIEW_TOP_K:6}
+    retrieval-mode: ${MEMORY_RETRIEVAL_MODE:hybrid-recall}
+    rerank-enabled: ${MEMORY_RERANK_ENABLED:true}
+    qdrant-collection: ${QDRANT_COLLECTION:memory_chunks}
+    audit-enabled: ${MEMORY_AUDIT_ENABLED:true}
+    audit-base-url: "${AUDIT_INTERNAL_BASE_URL:http://audit-service:18087}"
+server:
+  port: ${MEMORY_PORT:18083}

@@ -1,0 +1,380 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+        - name: auth-service
+          image: ghcr.io/your-org/phyok-auth-service:latest
+          ports:
+            - containerPort: 18081
+          envFrom:
+            - configMapRef:
+                name: phyok-platform-config
+            - secretRef:
+                name: phyok-platform-secret
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /internal/health
+              port: 18081
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /internal/health
+              port: 18081
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+spec:
+  selector:
+    app: auth-service
+  ports:
+    - port: 18081
+      targetPort: 18081
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tenant-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tenant-service
+  template:
+    metadata:
+      labels:
+        app: tenant-service
+    spec:
+      containers:
+        - name: tenant-service
+          image: ghcr.io/your-org/phyok-tenant-service:latest
+          ports:
+            - containerPort: 18082
+          envFrom:
+            - configMapRef:
+                name: phyok-platform-config
+            - secretRef:
+                name: phyok-platform-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tenant-service
+spec:
+  selector:
+    app: tenant-service
+  ports:
+    - port: 18082
+      targetPort: 18082
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: memory-service
+  template:
+    metadata:
+      labels:
+        app: memory-service
+    spec:
+      containers:
+        - name: memory-service
+          image: ghcr.io/your-org/phyok-memory-service:latest
+          ports:
+            - containerPort: 18083
+          envFrom:
+            - configMapRef:
+                name: phyok-platform-config
+            - secretRef:
+                name: phyok-platform-secret
+          resources:
+            requests:
+              cpu: "300m"
+              memory: "384Mi"
+            limits:
+              cpu: "1200m"
+              memory: "768Mi"
+          readinessProbe:
+            httpGet:
+              path: /internal/health
+              port: 18083
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /internal/health
+              port: 18083
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memory-service
+spec:
+  selector:
+    app: memory-service
+  ports:
+    - port: 18083
+      targetPort: 18083
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledge-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knowledge-service
+  template:
+    metadata:
+      labels:
+        app: knowledge-service
+    spec:
+      containers:
+        - name: knowledge-service
+          image: ghcr.io/your-org/phyok-knowledge-service:latest
+          ports:
+            - containerPort: 18084
+          envFrom:
+            - configMapRef:
+                name: phyok-platform-config
+            - secretRef:
+                name: phyok-platform-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge-service
+spec:
+  selector:
+    app: knowledge-service
+  ports:
+    - port: 18084
+      targetPort: 18084
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing-service
+  template:
+    metadata:
+      labels:
+        app: billing-service
+    spec:
+      containers:
+        - name: billing-service
+          image: ghcr.io/your-org/phyok-billing-service:latest
+          ports:
+            - containerPort: 18085
+          envFrom:
+            - configMapRef:
+                name: phyok-platform-config
+            - secretRef:
+                name: phyok-platform-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-service
+spec:
+  selector:
+    app: billing-service
+  ports:
+    - port: 18085
+      targetPort: 18085
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+    spec:
+      containers:
+        - name: payment-service
+          image: ghcr.io/your-org/phyok-payment-service:latest
+          ports:
+            - containerPort: 18086
+          envFrom:
+            - configMapRef:
+                name: phyok-platform-config
+            - secretRef:
+                name: phyok-platform-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+spec:
+  selector:
+    app: payment-service
+  ports:
+    - port: 18086
+      targetPort: 18086
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: audit-service
+  template:
+    metadata:
+      labels:
+        app: audit-service
+    spec:
+      containers:
+        - name: audit-service
+          image: ghcr.io/your-org/phyok-audit-service:latest
+          ports:
+            - containerPort: 18087
+          envFrom:
+            - configMapRef:
+                name: phyok-platform-config
+            - secretRef:
+                name: phyok-platform-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit-service
+spec:
+  selector:
+    app: audit-service
+  ports:
+    - port: 18087
+      targetPort: 18087
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: privacy-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: privacy-service
+  template:
+    metadata:
+      labels:
+        app: privacy-service
+    spec:
+      containers:
+        - name: privacy-service
+          image: ghcr.io/your-org/phyok-privacy-service:latest
+          ports:
+            - containerPort: 18088
+          envFrom:
+            - configMapRef:
+                name: phyok-platform-config
+            - secretRef:
+                name: phyok-platform-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: privacy-service
+spec:
+  selector:
+    app: privacy-service
+  ports:
+    - port: 18088
+      targetPort: 18088
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-admin-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ops-admin-service
+  template:
+    metadata:
+      labels:
+        app: ops-admin-service
+    spec:
+      containers:
+        - name: ops-admin-service
+          image: ghcr.io/your-org/phyok-ops-admin-service:latest
+          ports:
+            - containerPort: 18089
+          envFrom:
+            - configMapRef:
+                name: phyok-platform-config
+            - secretRef:
+                name: phyok-platform-secret
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /internal/health
+              port: 18089
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /internal/health
+              port: 18089
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ops-admin-service
+spec:
+  selector:
+    app: ops-admin-service
+  ports:
+    - port: 18089
+      targetPort: 18089

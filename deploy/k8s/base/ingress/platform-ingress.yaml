@@ -1,0 +1,95 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: phyok-platform-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+spec:
+  rules:
+    - host: api.phyok.local
+      http:
+        paths:
+          # Legacy compatibility only. The official public prefix for new APIs is /v2.
+          - path: /app
+            pathType: Prefix
+            backend:
+              service:
+                name: node2-runtime
+                port:
+                  number: 3002
+          - path: /v2/chat
+            pathType: Prefix
+            backend:
+              service:
+                name: node2-runtime
+                port:
+                  number: 3002
+          - path: /v2/media
+            pathType: Prefix
+            backend:
+              service:
+                name: node2-runtime
+                port:
+                  number: 3002
+          - path: /v2/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: node2-runtime
+                port:
+                  number: 3002
+          - path: /v2/billing
+            pathType: Prefix
+            backend:
+              service:
+                name: node2-runtime
+                port:
+                  number: 3002
+          - path: /v2/audits
+            pathType: Prefix
+            backend:
+              service:
+                name: node2-runtime
+                port:
+                  number: 3002
+          - path: /v2/memories
+            pathType: Prefix
+            backend:
+              service:
+                name: memory-service
+                port:
+                  number: 18083
+          - path: /v2/privacy
+            pathType: Prefix
+            backend:
+              service:
+                name: privacy-service
+                port:
+                  number: 18088
+          - path: /v2/knowledge
+            pathType: Prefix
+            backend:
+              service:
+                name: knowledge-service
+                port:
+                  number: 18084
+          - path: /v2/payments
+            pathType: Prefix
+            backend:
+              service:
+                name: payment-service
+                port:
+                  number: 18086
+          - path: /v2/admin
+            pathType: Prefix
+            backend:
+              service:
+                name: ops-admin-service
+                port:
+                  number: 18089
