@@ -8,6 +8,7 @@ K3S_CHANNEL="${K3S_CHANNEL:-stable}"
 K3S_INSTALL_SCRIPT_URL="${K3S_INSTALL_SCRIPT_URL:-https://rancher-mirror.rancher.cn/k3s/k3s-install.sh}"
 K3S_INSTALL_MIRROR="${K3S_INSTALL_MIRROR:-cn}"
 INSTALL_K3S_SELINUX_WARN="${INSTALL_K3S_SELINUX_WARN:-true}"
+INSTALL_K3S_SKIP_SELINUX_RPM="${INSTALL_K3S_SKIP_SELINUX_RPM:-false}"
 INGRESS_NGINX_VERSION="${INGRESS_NGINX_VERSION:-controller-v1.11.3}"
 INGRESS_NGINX_MANIFEST_PATH="${INGRESS_NGINX_MANIFEST_PATH:-${ROOT_DIR}/deploy/k8s/vendor/ingress-nginx-controller-v1.11.3-baremetal.yaml}"
 INGRESS_NGINX_CONTROLLER_IMAGE="${INGRESS_NGINX_CONTROLLER_IMAGE:-}"
@@ -144,6 +145,37 @@ repair_rpm_docker_repo() {
   fi
 }
 
+prepare_selinux_dependencies() {
+  local selinux_mode="disabled"
+  if command -v getenforce >/dev/null 2>&1; then
+    selinux_mode="$(getenforce 2>/dev/null || echo disabled)"
+  fi
+
+  if [[ "${INSTALL_K3S_SKIP_SELINUX_RPM}" == "true" ]]; then
+    return 0
+  fi
+
+  if [[ "${selinux_mode}" == "Disabled" || "${selinux_mode}" == "disabled" ]]; then
+    INSTALL_K3S_SKIP_SELINUX_RPM="true"
+    return 0
+  fi
+
+  if rpm -q container-selinux >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v dnf >/dev/null 2>&1; then
+    run_root dnf install -y container-selinux --nobest >/dev/null 2>&1 || true
+  elif command -v yum >/dev/null 2>&1; then
+    run_root yum install -y container-selinux >/dev/null 2>&1 || true
+  fi
+
+  if ! rpm -q container-selinux >/dev/null 2>&1; then
+    echo "[WARN] container-selinux is unavailable, skip installing k3s-selinux RPM."
+    INSTALL_K3S_SKIP_SELINUX_RPM="true"
+  fi
+}
+
 run_root mkdir -p /etc/rancher/k3s
 run_root modprobe overlay || true
 run_root modprobe br_netfilter || true
@@ -160,8 +192,9 @@ run_root swapoff -a || true
 configure_docker_mirror
 configure_k3s_registries
 repair_rpm_docker_repo
+prepare_selinux_dependencies
 
-curl -sfL "${K3S_INSTALL_SCRIPT_URL}" | INSTALL_K3S_CHANNEL="${K3S_CHANNEL}" INSTALL_K3S_MIRROR="${K3S_INSTALL_MIRROR}" INSTALL_K3S_SELINUX_WARN="${INSTALL_K3S_SELINUX_WARN}" sh -s - server \
+curl -sfL "${K3S_INSTALL_SCRIPT_URL}" | INSTALL_K3S_CHANNEL="${K3S_CHANNEL}" INSTALL_K3S_MIRROR="${K3S_INSTALL_MIRROR}" INSTALL_K3S_SELINUX_WARN="${INSTALL_K3S_SELINUX_WARN}" INSTALL_K3S_SKIP_SELINUX_RPM="${INSTALL_K3S_SKIP_SELINUX_RPM}" sh -s - server \
   --write-kubeconfig-mode 644 \
   --disable traefik \
   --disable servicelb
