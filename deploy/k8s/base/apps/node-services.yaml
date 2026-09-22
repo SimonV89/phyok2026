@@ -15,6 +15,7 @@ spec:
       containers:
         - name: node2-runtime
           image: ghcr.io/your-org/phyok-node2-runtime:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3002
           envFrom:

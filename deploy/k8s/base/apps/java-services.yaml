@@ -15,6 +15,7 @@ spec:
       containers:
         - name: auth-service
           image: ghcr.io/your-org/phyok-auth-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 18081
           envFrom:
@@ -70,6 +71,7 @@ spec:
       containers:
         - name: tenant-service
           image: ghcr.io/your-org/phyok-tenant-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 18082
           envFrom:
@@ -106,6 +108,7 @@ spec:
       containers:
         - name: memory-service
           image: ghcr.io/your-org/phyok-memory-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 18083
           envFrom:
@@ -161,6 +164,7 @@ spec:
       containers:
         - name: knowledge-service
           image: ghcr.io/your-org/phyok-knowledge-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 18084
           envFrom:
@@ -197,6 +201,7 @@ spec:
       containers:
         - name: billing-service
           image: ghcr.io/your-org/phyok-billing-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 18085
           envFrom:
@@ -233,6 +238,7 @@ spec:
       containers:
         - name: payment-service
           image: ghcr.io/your-org/phyok-payment-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 18086
           envFrom:
@@ -269,6 +275,7 @@ spec:
       containers:
         - name: audit-service
           image: ghcr.io/your-org/phyok-audit-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 18087
           envFrom:
@@ -305,6 +312,7 @@ spec:
       containers:
         - name: privacy-service
           image: ghcr.io/your-org/phyok-privacy-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 18088
           envFrom:
@@ -341,6 +349,7 @@ spec:
       containers:
         - name: ops-admin-service
           image: ghcr.io/your-org/phyok-ops-admin-service:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 18089
           envFrom:

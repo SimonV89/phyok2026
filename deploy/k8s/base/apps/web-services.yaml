@@ -15,6 +15,7 @@ spec:
       containers:
         - name: chat-web
           image: ghcr.io/your-org/phyok-chat-web:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3001
           envFrom:
