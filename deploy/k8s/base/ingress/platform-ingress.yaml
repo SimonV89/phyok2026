@@ -15,14 +15,6 @@ spec:
     - host: api.phyok.local
       http:
         paths:
-          # Legacy compatibility only. The official public prefix for new APIs is /v2.
-          - path: /app
-            pathType: Prefix
-            backend:
-              service:
-                name: node2-runtime
-                port:
-                  number: 3002
           - path: /v2/chat
             pathType: Prefix
             backend:

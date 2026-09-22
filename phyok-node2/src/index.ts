@@ -66,24 +66,6 @@ async function buildServer() {
   await app.register(billingV2Routes, { prefix: "/v2/billing" });
   await app.register(auditV2Routes, { prefix: "/v2/audits" });
 
-  await app.register(
-    async (legacy) => {
-      legacy.get("/health", async (request) =>
-        createSuccess(request.id, {
-          ok: true,
-          name: "phyok-node2",
-          ts: Date.now(),
-          legacy: true
-        })
-      );
-      await legacy.register(chatV2Routes, { prefix: "/v2/chat" });
-      await legacy.register(mediaV2Routes, { prefix: "/v2/media" });
-      await legacy.register(authV2Routes, { prefix: "/v2/auth" });
-      await legacy.register(billingV2Routes, { prefix: "/v2/billing" });
-      await legacy.register(auditV2Routes, { prefix: "/v2/audits" });
-    },
-    { prefix: "/app" }
-  );
 
   return app;
 }
