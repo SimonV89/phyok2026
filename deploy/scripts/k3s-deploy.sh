@@ -31,6 +31,28 @@ wait_for_infra_group() {
   done
 }
 
+print_rollout_diagnostics() {
+  local workload="$1"
+  local pods=""
+  local pod=""
+
+  echo "Rollout diagnostics for ${workload}:"
+  kubectl get deployment "${workload}" -n phyok -o wide || true
+  kubectl describe deployment "${workload}" -n phyok || true
+  kubectl get pods -n phyok -l "app=${workload}" -o wide || true
+
+  pods="$(kubectl get pods -n phyok -l "app=${workload}" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)"
+  while IFS= read -r pod; do
+    [[ -z "${pod}" ]] && continue
+    echo "---- describe pod/${pod} ----"
+    kubectl describe pod "${pod}" -n phyok || true
+    echo "---- logs pod/${pod} ----"
+    kubectl logs "${pod}" -n phyok --tail=200 || true
+    echo "---- previous logs pod/${pod} ----"
+    kubectl logs "${pod}" -n phyok --previous --tail=200 || true
+  done <<< "${pods}"
+}
+
 "${SCRIPT_DIR}/k8s-apply-env.sh"
 
 case "${GROUP}" in
@@ -75,7 +97,9 @@ while IFS= read -r workload; do
   [[ -n "${workload}" ]] && workloads+=("${workload}")
 done < <(group_k8s_workloads "${GROUP}")
 for workload in "${workloads[@]}"; do
-  kubectl rollout status deployment/"${workload}" -n phyok --timeout=300s || true
+  if ! kubectl rollout status deployment/"${workload}" -n phyok --timeout=300s; then
+    print_rollout_diagnostics "${workload}"
+  fi
 done
 
 echo "k3s deploy finished for group '${GROUP}' with host '${PUBLIC_HOST}'."
