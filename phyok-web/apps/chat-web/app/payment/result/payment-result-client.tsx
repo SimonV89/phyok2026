@@ -98,7 +98,7 @@ export function PaymentResultClient() {
             <div className="payment-result-stat">
               <strong>{(order.amountFen / 100).toFixed(2)} 元</strong>
               <span>
-                {order.planId} · {order.quota ?? 0} 次额度
+                {order.planId} · {order.quota ?? 0} 次有效调用
               </span>
             </div>
             <div className="payment-result-meta">

@@ -25,7 +25,8 @@ function createDomainClients(): DomainClients {
       upsertMemoryPlan: (query, ctx) => mockClient.upsertMemoryPlan(query, ctx),
       createMemoryFragment: (input, ctx) => httpClient.createMemoryFragment(input, ctx),
       emitAuditTrace: (ctx, phase) => httpClient.emitAuditTrace(ctx, phase),
-      precheckBilling: (ctx) => httpClient.precheckBilling(ctx)
+      precheckBilling: (ctx) => httpClient.precheckBilling(ctx),
+      consumeBilling: (ctx, input) => httpClient.consumeBilling(ctx, input)
     };
 
     if (env.memoryTransport === "grpc") {

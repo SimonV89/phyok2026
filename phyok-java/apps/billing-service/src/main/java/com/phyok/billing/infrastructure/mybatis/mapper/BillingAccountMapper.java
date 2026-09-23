@@ -2,10 +2,9 @@ package com.phyok.billing.infrastructure.mybatis.mapper;
 
 import com.phyok.billing.infrastructure.mybatis.entity.BillingAccountDO;
 import com.phyok.billing.infrastructure.mybatis.entity.BillingGrantRecordDO;
+import com.phyok.billing.infrastructure.mybatis.entity.BillingUsageRecordDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
-
-import java.time.OffsetDateTime;
 
 @Mapper
 public interface BillingAccountMapper {
@@ -18,8 +17,12 @@ public interface BillingAccountMapper {
             @Param("planId") String planId,
             @Param("quota") int quota,
             @Param("orderNo") String orderNo,
-            @Param("grantAt") OffsetDateTime grantAt
+            @Param("grantAt") java.time.OffsetDateTime grantAt
     );
 
     int insertGrantRecord(BillingGrantRecordDO grantRecord);
+
+    int insertUsageRecord(BillingUsageRecordDO usageRecord);
+
+    int consumeQuota(@Param("id") String id, @Param("quota") int quota);
 }

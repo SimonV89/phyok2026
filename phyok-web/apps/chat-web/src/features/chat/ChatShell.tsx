@@ -14,17 +14,22 @@ import {
   fetchBillingPlans,
   fetchConversationHistory,
   fetchConversationSummaries,
+  fetchPaymentOrder,
   fetchRunState,
   filesToDrafts,
   reconnectRun,
+  requestAccountDeletion,
   stopRun,
   streamNewRun,
+  submitComplaintFeedback,
   uploadMedia,
   type BillingPlanItem,
+  type ComplaintFeedbackCategory,
+  type CreateAlipayOrderResponse,
   type ConversationHistorySummary,
   type ChatStreamEvent
 } from "@/lib/chat-api";
-import { clearAuthSession, getAuthSession, type AuthSession } from "@/lib/auth-session";
+import { clearAuthSession, getAppId, getAuthSession, type AuthSession } from "@/lib/auth-session";
 import {
   type AttachmentDraft,
   addAttachments,
@@ -250,9 +255,158 @@ function buildExploreIntentPrompt(intent: (typeof EXPLORE_INTENTS)[number]): str
   }
 }
 
-function buildSchoolIntentPrompt(school: (typeof PSYCHOLOGY_SCHOOLS)[number]): string {
-  return `我想开启一个全新的探索上下文，请以“${school}”作为主要视角，结合我当下的情绪、关系和困扰，帮助我理解现在的心理状态，并给出一个最值得继续深入的探索方向。`;
+function buildMemoryIntentSuggestionSeed(intent: (typeof MEMORY_INTENTS)[number]): SuggestionSeed {
+  switch (intent) {
+    case "沉淀记忆星图":
+      return {
+        id: "sidebar-memory-map",
+        label: intent,
+        lane: "memory",
+        guideTitle: "先把值得保留的记忆线索沉淀下来",
+        guideBody: "这一步会先陪你从近期反复出现的情绪、关系片段和身体感受里，找出最值得长期保留的线索，再进入正式对话。",
+        kickoffPrompt: MEMORY_INTENT_PROMPTS[intent]
+      };
+    case "修复记忆碎片":
+      return {
+        id: "sidebar-memory-repair",
+        label: intent,
+        lane: "memory",
+        guideTitle: "先把那段模糊或断裂的经历慢慢接回来",
+        guideBody: "Floyd 会先帮你辨认这段经历里最模糊、最反复或最刺痛的部分，再带你进入更温和的追问。",
+        kickoffPrompt: MEMORY_INTENT_PROMPTS[intent]
+      };
+    default:
+      return {
+        id: `sidebar-memory-${intent}`,
+        label: intent,
+        lane: "memory",
+        guideTitle: "先从这个记忆入口开始",
+        guideBody: "先把这段经历说得更具体一些，再决定怎样继续沉淀或修复。",
+        kickoffPrompt: MEMORY_INTENT_PROMPTS[intent]
+      };
+  }
 }
+
+function buildExploreIntentSuggestionSeed(intent: (typeof EXPLORE_INTENTS)[number]): SuggestionSeed {
+  switch (intent) {
+    case "背后潜意识":
+      return {
+        id: "sidebar-explore-unconscious",
+        label: intent,
+        lane: "explore",
+        guideTitle: "先看看表面之下有什么在推动你",
+        guideBody: "这一步不会急着给结论，而是先帮你辨认现在的反应、选择和情绪背后，最可能被忽略的心理动因。",
+        kickoffPrompt: buildExploreIntentPrompt(intent)
+      };
+    case "原生家庭溯源":
+      return {
+        id: "sidebar-explore-family",
+        label: intent,
+        lane: "explore",
+        guideTitle: "先确认今天的困扰和过去怎样连在一起",
+        guideBody: "Floyd 会先带你辨认今天哪些情绪、关系反应像旧经验的回声，再决定怎样继续往成长经历里追问。",
+        kickoffPrompt: buildExploreIntentPrompt(intent)
+      };
+    case "困扰根因":
+      return {
+        id: "sidebar-explore-root",
+        label: intent,
+        lane: "explore",
+        guideTitle: "先把眼前最卡住的地方对准",
+        guideBody: "这一步会先帮你从混乱里找出最值得继续追问的核心问题，再进入更深一层的探索。",
+        kickoffPrompt: buildExploreIntentPrompt(intent)
+      };
+    default:
+      return {
+        id: `sidebar-explore-${intent}`,
+        label: intent,
+        lane: "explore",
+        guideTitle: "先从这个探索入口开始",
+        guideBody: "先用几个低压力的问题收束方向，再进入正式探索。",
+        kickoffPrompt: buildExploreIntentPrompt(intent)
+      };
+  }
+}
+
+function detectPaymentScene(): "desktop" | "mobile" {
+  if (typeof window === "undefined") {
+    return "desktop";
+  }
+  const compactViewport = window.matchMedia?.("(max-width: 860px)")?.matches ?? false;
+  const ua = typeof navigator === "undefined" ? "" : navigator.userAgent.toLowerCase();
+  const mobileUa = /android|iphone|ipad|ipod|mobile|harmonyos/.test(ua);
+  return mobileUa || compactViewport ? "mobile" : "desktop";
+}
+
+type AccountDialogView = "privacy" | "about" | "feedback" | "delete-account";
+
+const FEEDBACK_CATEGORY_OPTIONS: Array<{ value: ComplaintFeedbackCategory; label: string; hint: string }> = [
+  { value: "product", label: "产品问题", hint: "功能异常、账号行为、页面错误" },
+  { value: "payment", label: "支付问题", hint: "支付失败、额度未到账、订单异常" },
+  { value: "privacy", label: "隐私与数据", hint: "个人信息、权限、数据使用顾虑" },
+  { value: "experience", label: "体验建议", hint: "交互建议、文案建议、流程建议" },
+  { value: "other", label: "其他", hint: "不属于以上分类的补充反馈" }
+];
+
+const PRIVACY_SECTIONS: Array<{ title: string; body: string[] }> = [
+  {
+    title: "适用范围",
+    body: [
+      "本隐私协议适用于心理学空间·自我探索Agent Pro 在网站、H5 与相关服务形态下对个人信息的处理活动。",
+      "我们依据《中华人民共和国个人信息保护法》《中华人民共和国数据安全法》《中华人民共和国网络安全法》以及 2026 年现行适用规范处理你的个人信息。"
+    ]
+  },
+  {
+    title: "我们会处理哪些信息",
+    body: [
+      "账号与身份信息：邮箱地址、登录会话标识、设备标识，用于完成登录、识别账号安全状态与维持服务可用性。",
+      "对话与内容信息：你主动输入的文本、上传的图片、文档、语音，以及系统生成的记忆碎片、对话历史、订单与审计记录。",
+      "敏感信息提示：心理困扰、自我感受、成长经历、健康相关描述等，可能构成敏感个人信息。你在主动提交前，应确认自己愿意为获得相关功能而授权我们处理。"
+    ]
+  },
+  {
+    title: "我们如何使用这些信息",
+    body: [
+      "用于完成聊天交互、多模态解析、心理学探索建议、记忆沉淀与星图展示。",
+      "用于保障系统安全、排查异常、进行计费结算、处理投诉反馈与满足合规留痕要求。",
+      "当你申请注销账号、删除数据或提交投诉反馈时，我们会为履行法定义务与处理你的请求而继续保留必要的最小信息。"
+    ]
+  },
+  {
+    title: "信息共享与委托处理",
+    body: [
+      "除法律法规另有要求，或为完成你明确发起的支付、消息通知、云存储、风控与基础设施保障外，我们不会向无关第三方出售你的个人信息。",
+      "若确需委托第三方处理，我们会要求其仅在约定目的、范围与期限内处理，并采取不低于本协议要求的安全措施。"
+    ]
+  },
+  {
+    title: "存储与保护",
+    body: [
+      "我们会根据业务必要性、法定义务与争议处理需要，保存你的账号资料、订单资料、审计记录和你主动留存的内容。",
+      "我们采取访问控制、最小权限、传输保护、日志审计与环境隔离等方式降低个人信息泄露、篡改、丢失的风险。"
+    ]
+  },
+  {
+    title: "你的权利",
+    body: [
+      "你有权查询、复制、更正、删除你的个人信息，有权撤回同意、限制处理、申请解释本协议，并可发起账号注销申请。",
+      "如你对个人信息处理存在异议，可通过投诉反馈入口或联系邮箱 `simon.wzb@qq.com` 与我们联系，我们会在合理期限内处理。"
+    ]
+  },
+  {
+    title: "未成年人保护",
+    body: [
+      "若你是不满十四周岁的未成年人，请在监护人同意并指导下使用本服务；监护人认为存在不当处理的，可与我们联系要求更正、删除或停止处理。"
+    ]
+  },
+  {
+    title: "协议更新",
+    body: [
+      "当业务功能、法律要求或处理规则发生重要变化时，我们会通过产品页面、登录前提示或其它合理方式更新本协议。",
+      "本版本自 2026-09-23 起生效。"
+    ]
+  }
+];
 
 type ComposerToolIconKind = "document" | "image" | "record" | "recording" | "processing";
 
@@ -680,6 +834,7 @@ export function ChatShell() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const recordingFrameRef = useRef<number | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const memoryLaneRef = useRef<HTMLDivElement | null>(null);
   const exploreLaneRef = useRef<HTMLDivElement | null>(null);
   const animationPausedRef = useRef(false);
@@ -727,13 +882,15 @@ export function ChatShell() {
   const [animationPaused, setAnimationPaused] = useState(false);
   const [isPortraitMobile, setIsPortraitMobile] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [activeAccountDialog, setActiveAccountDialog] = useState<AccountDialogView | null>(null);
   const [toolbarHeight, setToolbarHeight] = useState(88);
   const [explorePanelOpen, setExplorePanelOpen] = useState(true);
   const [selectedSchool, setSelectedSchool] = useState<(typeof PSYCHOLOGY_SCHOOLS)[number]>("精神分析流派");
   const [memoryChips, setMemoryChips] = useState<SuggestionChip[]>([]);
   const [exploreChips, setExploreChips] = useState<SuggestionChip[]>([]);
-  const [pendingSuggestionChip, setPendingSuggestionChip] = useState<SuggestionChip | null>(null);
+  const [pendingSuggestionChip, setPendingSuggestionChip] = useState<(SuggestionSeed | SuggestionChip) | null>(null);
   const [recordingState, setRecordingState] = useState<"idle" | "recording" | "processing">("idle");
   const [recordingElapsedMs, setRecordingElapsedMs] = useState(0);
   const [recordingError, setRecordingError] = useState<string | null>(null);
@@ -746,13 +903,15 @@ export function ChatShell() {
   const [unreadUpdateCount, setUnreadUpdateCount] = useState(0);
   const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
   const [paymentFeedback, setPaymentFeedback] = useState<string | null>(null);
-  const [lastPaymentOrder, setLastPaymentOrder] = useState<{
-    orderNo: string;
-    planId: string;
-    payUrl: string;
-    qrCodeUrl: string;
-    expiresAt: string;
-  } | null>(null);
+  const [lastPaymentOrder, setLastPaymentOrder] = useState<CreateAlipayOrderResponse["data"] | null>(null);
+  const [feedbackCategory, setFeedbackCategory] = useState<ComplaintFeedbackCategory>("product");
+  const [feedbackContent, setFeedbackContent] = useState("");
+  const [feedbackContactEmail, setFeedbackContactEmail] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [deleteAccountReason, setDeleteAccountReason] = useState("");
+  const [deleteAccountSubmitting, setDeleteAccountSubmitting] = useState(false);
+  const [deleteAccountMessage, setDeleteAccountMessage] = useState<string | null>(null);
 
   const hasConversation = chat.messages.length > 0;
   const showTimeline = hasConversation || recovering;
@@ -773,7 +932,6 @@ export function ChatShell() {
     () => Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE)),
     [historyTotal]
   );
-
   const composerDisabled = useMemo(() => {
     return (
       chat.stream.status === "streaming" ||
@@ -795,26 +953,118 @@ export function ChatShell() {
     return null;
   }, [recordingElapsedMs, recordingError, recordingState]);
   const openAuthDialog = useCallback(() => {
+    setAccountMenuOpen(false);
     setAuthDialogOpen(true);
     setPaymentFeedback(null);
   }, []);
   const closeAuthDialog = useCallback(() => {
     setAuthDialogOpen(false);
   }, []);
+  const closeAccountDialog = useCallback(() => {
+    setActiveAccountDialog(null);
+  }, []);
+  const openAccountDialog = useCallback(
+    (view: AccountDialogView) => {
+      setAccountMenuOpen(false);
+      setActiveAccountDialog(view);
+      if (view === "feedback") {
+        setFeedbackMessage(null);
+        setFeedbackContactEmail((current) => current || authSession?.email || "");
+      }
+      if (view === "delete-account") {
+        setDeleteAccountMessage(null);
+      }
+    },
+    [authSession?.email]
+  );
+  const handleAccountEntryClick = useCallback(() => {
+    if (authSession) {
+      setAccountMenuOpen((value) => !value);
+      return;
+    }
+    openAuthDialog();
+  }, [authSession, openAuthDialog]);
   const handleAuthSuccess = useCallback((session: AuthSession) => {
     setAuthSession(session);
     setAuthDialogOpen(false);
+    setFeedbackContactEmail(session.email);
     setActiveModule("profile");
   }, []);
   const handleLogout = useCallback(() => {
     clearAuthSession();
     setAuthSession(null);
+    setAccountMenuOpen(false);
+    setActiveAccountDialog(null);
     setBillingSummary(null);
     setAuditEvents([]);
     setLastPaymentOrder(null);
     setPaymentFeedback("已退出当前账号。");
     setActiveModule("profile");
   }, []);
+  const handleSubmitComplaintFeedback = useCallback(async () => {
+    setFeedbackSubmitting(true);
+    setFeedbackMessage(null);
+    try {
+      await submitComplaintFeedback({
+        userId: authSession?.userId,
+        userEmail: authSession?.email,
+        contactEmail: feedbackContactEmail,
+        conversationId: chat.conversationId || undefined,
+        category: feedbackCategory,
+        content: feedbackContent
+      });
+      setFeedbackMessage("已收到你的反馈，我们会尽快查看并在 CMS 中继续处理。");
+      setFeedbackContent("");
+    } catch (error) {
+      setFeedbackMessage(error instanceof Error ? error.message : "反馈提交失败。");
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  }, [authSession?.email, authSession?.userId, chat.conversationId, feedbackCategory, feedbackContactEmail, feedbackContent]);
+  const handleRequestAccountDeletion = useCallback(async () => {
+    if (!authSession?.userId || !authSession.email) {
+      setDeleteAccountMessage("请先登录后再提交注销申请。");
+      return;
+    }
+    setDeleteAccountSubmitting(true);
+    setDeleteAccountMessage(null);
+    try {
+      await requestAccountDeletion({
+        userId: authSession.userId,
+        userEmail: authSession.email,
+        appId: getAppId(),
+        reason: deleteAccountReason
+      });
+      setDeleteAccountMessage("注销申请已提交，我们会按流程处理，并通过你留下的账号邮箱与你联系。");
+    } catch (error) {
+      setDeleteAccountMessage(error instanceof Error ? error.message : "注销申请提交失败。");
+    } finally {
+      setDeleteAccountSubmitting(false);
+    }
+  }, [authSession, deleteAccountReason]);
+  const accountMenuContent = authSession && accountMenuOpen ? (
+    <div className="account-menu-popover" role="menu" aria-label="账号菜单">
+      <div className="account-menu-header">
+        <span>当前账号</span>
+        <strong>{authSession.email}</strong>
+      </div>
+      <button type="button" className="account-menu-item" onClick={handleLogout}>
+        退出登录
+      </button>
+      <button type="button" className="account-menu-item" onClick={() => openAccountDialog("delete-account")}>
+        注销账号
+      </button>
+      <button type="button" className="account-menu-item" onClick={() => openAccountDialog("privacy")}>
+        隐私协议
+      </button>
+      <button type="button" className="account-menu-item" onClick={() => openAccountDialog("feedback")}>
+        投诉反馈
+      </button>
+      <button type="button" className="account-menu-item" onClick={() => openAccountDialog("about")}>
+        关于
+      </button>
+    </div>
+  ) : null;
   const handleCreateAlipayOrder = useCallback(
     async (planId: string) => {
       if (!authSession?.sessionToken) {
@@ -827,12 +1077,22 @@ export function ChatShell() {
       try {
         setPayingPlanId(planId);
         setPaymentFeedback(null);
-        const order = await createAlipayOrder(planId);
+        const scene = detectPaymentScene();
+        const order = await createAlipayOrder(planId, scene);
         setLastPaymentOrder(order);
-        setPaymentFeedback("支付宝订单已创建，可继续支付或查看二维码。");
         if (typeof window !== "undefined") {
-          window.open(order.payUrl, "_blank", "noopener,noreferrer");
+          if (order.paymentMode === "WAP" || scene === "mobile") {
+            setPaymentFeedback("支付宝订单已创建，正在为你打开移动支付页。");
+            window.location.assign(order.payUrl);
+            return;
+          }
+          const popup = window.open(order.payUrl, "_blank", "noopener,noreferrer");
+          setPaymentFeedback(
+            popup ? "支付宝订单已创建，已打开支付页。" : "支付宝订单已创建，请在下方继续打开支付页。"
+          );
+          return;
         }
+        setPaymentFeedback("支付宝订单已创建，请继续打开支付页。");
       } catch (error) {
         setPaymentFeedback(error instanceof Error ? error.message : "创建支付宝订单失败。");
       } finally {
@@ -841,6 +1101,46 @@ export function ChatShell() {
     },
     [authSession]
   );
+
+  const applyBillingSummary = useCallback((account: Awaited<ReturnType<typeof fetchBillingAccount>>) => {
+    setBillingSummary({
+      plan: account.plan,
+      remainingTokens: account.remainingTokens,
+      quotaState: account.quotaState,
+      seedUser: Boolean(account.seedUser),
+      paymentChannel: account.paymentChannel ?? "alipay",
+      recommendedPlanId: account.recommendedPlanId
+    });
+  }, []);
+
+  const refreshBillingSummary = useCallback(async () => {
+    if (!authSession?.sessionToken) {
+      setBillingSummary(null);
+      return;
+    }
+    try {
+      const account = await fetchBillingAccount();
+      applyBillingSummary(account);
+    } catch {
+      setBillingSummary(null);
+    }
+  }, [applyBillingSummary, authSession]);
+
+  const refreshPendingPaymentState = useCallback(async () => {
+    if (!lastPaymentOrder?.orderNo) {
+      return;
+    }
+    try {
+      const latestOrder = await fetchPaymentOrder(lastPaymentOrder.orderNo, { refresh: true });
+      setLastPaymentOrder(latestOrder);
+      if (latestOrder.status === "PAID") {
+        setPaymentFeedback("支付成功，额度已到账。");
+        await refreshBillingSummary();
+      }
+    } catch {
+      // ignore transient payment polling failures
+    }
+  }, [lastPaymentOrder?.orderNo, refreshBillingSummary]);
 
   const persistActiveRun = useCallback((runId: string, conversationId: string) => {
     localStorage.setItem(
@@ -1071,6 +1371,9 @@ export function ChatShell() {
             dispatch(stopRunLocally());
           } else {
             dispatch(completeRun());
+            if (event.data.status === "completed") {
+              void refreshBillingSummary();
+            }
           }
           setMemoryMapRefreshKey((value) => value + 1);
           clearActiveRun();
@@ -1079,7 +1382,7 @@ export function ChatShell() {
           break;
       }
     },
-    [clearActiveRun, dispatch, openAuthDialog, persistActiveRun]
+    [clearActiveRun, dispatch, openAuthDialog, persistActiveRun, refreshBillingSummary]
   );
 
   const attachFiles = useCallback(
@@ -1290,7 +1593,7 @@ export function ChatShell() {
   );
 
   const openSuggestionGuide = useCallback(
-    (chip: SuggestionChip) => {
+    (chip: SuggestionSeed | SuggestionChip) => {
       pauseAtmosphere();
       setPendingSuggestionChip(chip);
     },
@@ -1757,6 +2060,12 @@ export function ChatShell() {
   }, []);
 
   useEffect(() => {
+    if (authSession?.email && !feedbackContactEmail) {
+      setFeedbackContactEmail(authSession.email);
+    }
+  }, [authSession?.email, feedbackContactEmail]);
+
+  useEffect(() => {
     if (!authDialogOpen) {
       return;
     }
@@ -1772,6 +2081,48 @@ export function ChatShell() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [authDialogOpen, closeAuthDialog]);
+
+  useEffect(() => {
+    if (!activeAccountDialog) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeAccountDialog();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeAccountDialog, closeAccountDialog]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) {
+        setAccountMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAccountMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [accountMenuOpen]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1934,14 +2285,7 @@ export function ChatShell() {
             pageSize: 5
           })
         ]);
-        setBillingSummary({
-          plan: account.plan,
-          remainingTokens: account.remainingTokens,
-          quotaState: account.quotaState,
-          seedUser: Boolean(account.seedUser),
-          paymentChannel: account.paymentChannel ?? "alipay",
-          recommendedPlanId: account.recommendedPlanId
-        });
+        applyBillingSummary(account);
         setAuditEvents(
           auditPage.items.map((item) => ({
             id: item.id,
@@ -1957,7 +2301,28 @@ export function ChatShell() {
     };
 
     void loadRuntimeViews();
-  }, [authSession]);
+  }, [applyBillingSummary, authSession]);
+
+  useEffect(() => {
+    if (!authSession?.sessionToken) {
+      return;
+    }
+    const handleWindowFocus = () => {
+      void refreshBillingSummary();
+      void refreshPendingPaymentState();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        handleWindowFocus();
+      }
+    };
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [authSession, refreshBillingSummary, refreshPendingPaymentState]);
 
   useEffect(() => {
     if (activeModule !== "profile" && !authDialogOpen) {
@@ -2058,15 +2423,18 @@ export function ChatShell() {
                 >
                   <NewContextIcon />
                 </button>
-                <button
-                  type="button"
-                  className="toolbar-quick-action icon-only"
-                  aria-label={authSession ? `当前账号 ${authSession.email}` : "邮箱登录"}
-                  title={authSession ? authSession.email : "邮箱登录"}
-                  onClick={openAuthDialog}
-                >
-                  <AccountEntryIcon />
-                </button>
+                <div className="toolbar-account-shell" ref={accountMenuRef}>
+                  <button
+                    type="button"
+                    className="toolbar-quick-action icon-only"
+                    aria-label={authSession ? `当前账号 ${authSession.email}` : "邮箱登录"}
+                    title={authSession ? authSession.email : "邮箱登录"}
+                    onClick={handleAccountEntryClick}
+                  >
+                    <AccountEntryIcon />
+                  </button>
+                  {accountMenuContent}
+                </div>
               </div>
             </div>
           ) : null}
@@ -2081,15 +2449,18 @@ export function ChatShell() {
               >
                 <NewContextIcon />
               </button>
-              <button
-                type="button"
-                className={`toolbar-login ${authSession ? "" : "icon-only"}`.trim()}
-                aria-label={authSession ? `已登录，当前账号 ${authSession.email}` : "邮箱登录"}
-                title={authSession ? authSession.email : "邮箱登录"}
-                onClick={openAuthDialog}
-              >
-                {authSession ? authSession.email : <AccountEntryIcon />}
-              </button>
+              <div className="toolbar-account-shell" ref={accountMenuRef}>
+                <button
+                  type="button"
+                  className={`toolbar-login ${authSession ? "" : "icon-only"}`.trim()}
+                  aria-label={authSession ? `已登录，当前账号 ${authSession.email}` : "邮箱登录"}
+                  title={authSession ? authSession.email : "邮箱登录"}
+                  onClick={handleAccountEntryClick}
+                >
+                  {authSession ? authSession.email : <AccountEntryIcon />}
+                </button>
+                {accountMenuContent}
+              </div>
             </>
           ) : null}
         </div>
@@ -2146,7 +2517,7 @@ export function ChatShell() {
                           className="module-intent-chip"
                           onClick={() => {
                             handleModuleSelect("explore");
-                            void launchIntentConversation(MEMORY_INTENT_PROMPTS[intent]);
+                            openSuggestionGuide(buildMemoryIntentSuggestionSeed(intent));
                           }}
                         >
                           {intent}
@@ -2165,7 +2536,7 @@ export function ChatShell() {
                             const nextSchool = event.target.value as (typeof PSYCHOLOGY_SCHOOLS)[number];
                             setSelectedSchool(nextSchool);
                             handleModuleSelect("explore");
-                            void launchIntentConversation(buildSchoolIntentPrompt(nextSchool));
+                            openSuggestionGuide(buildSchoolSuggestionSeed(nextSchool));
                           }}
                         >
                           {PSYCHOLOGY_SCHOOLS.map((school) => (
@@ -2182,7 +2553,7 @@ export function ChatShell() {
                           className="module-intent-chip"
                           onClick={() => {
                             handleModuleSelect("explore");
-                            void launchIntentConversation(buildExploreIntentPrompt(intent));
+                            openSuggestionGuide(buildExploreIntentSuggestionSeed(intent));
                           }}
                         >
                           {intent}
@@ -2444,11 +2815,29 @@ export function ChatShell() {
                   </div>
                   <div className="profile-order-actions">
                     <a href={lastPaymentOrder.payUrl} target="_blank" rel="noreferrer" className="toolbar-login">
-                      前往支付
+                      {lastPaymentOrder.paymentMode === "WAP" ? "继续支付" : "打开收银台"}
                     </a>
-                    <a href={lastPaymentOrder.qrCodeUrl} target="_blank" rel="noreferrer" className="toolbar-login">
-                      查看二维码
-                    </a>
+                    <button
+                      type="button"
+                      className="toolbar-login"
+                      onClick={() => {
+                        const nextValue = lastPaymentOrder.qrCodeContent || lastPaymentOrder.payUrl;
+                        if (typeof navigator === "undefined" || !navigator.clipboard || !nextValue) {
+                          setPaymentFeedback("当前环境暂不支持复制，请直接打开支付页。");
+                          return;
+                        }
+                        void navigator.clipboard
+                          .writeText(nextValue)
+                          .then(() => {
+                            setPaymentFeedback("支付链接已复制，可在支付宝中继续打开。");
+                          })
+                          .catch(() => {
+                            setPaymentFeedback("复制支付链接失败，请直接打开支付页。");
+                          });
+                      }}
+                    >
+                      复制支付链接
+                    </button>
                   </div>
                 </div>
               ) : null}
@@ -2477,7 +2866,7 @@ export function ChatShell() {
                             <strong>{plan.name}</strong>
                             <span>{(plan.priceFen / 100).toFixed(2)} 元</span>
                           </div>
-                          <div className="profile-plan-quota">{plan.quota} 次使用额度</div>
+                          <div className="profile-plan-quota">{plan.quota} 次有效调用</div>
                           <p>{plan.description}</p>
                           {plan.highlight ? <div className="profile-plan-highlight">{plan.highlight}</div> : null}
                           <button
@@ -2958,6 +3347,187 @@ export function ChatShell() {
           <div className="auth-dialog-modal" role="dialog" aria-modal="true" aria-label="邮箱验证码登录" onClick={(event) => event.stopPropagation()}>
             <EmailLoginCard mode="modal" onSuccess={handleAuthSuccess} onCancel={closeAuthDialog} />
           </div>
+        </div>
+      ) : null}
+      {activeAccountDialog ? (
+        <div className="suggestion-guide-modal-backdrop" onClick={closeAccountDialog}>
+          {activeAccountDialog === "privacy" ? (
+            <div className="account-info-modal legal-modal" role="dialog" aria-modal="true" aria-label="隐私协议" onClick={(event) => event.stopPropagation()}>
+              <button type="button" className="suggestion-guide-close" onClick={closeAccountDialog} aria-label="关闭隐私协议">
+                关闭
+              </button>
+              <div className="suggestion-guide-kicker">个人信息保护</div>
+              <h3>隐私协议</h3>
+              <p>
+                我们尊重并审慎处理你的个人信息，尤其是你在心理探索、自我表达与记忆沉淀过程中主动提交的敏感内容。以下内容用于帮助你清楚了解我们如何收集、使用、保存与保护这些信息。
+              </p>
+              <div className="account-info-scroll">
+                {PRIVACY_SECTIONS.map((section) => (
+                  <section key={section.title} className="legal-section">
+                    <h4>{section.title}</h4>
+                    {section.body.map((paragraph) => (
+                      <p key={paragraph}>{paragraph}</p>
+                    ))}
+                  </section>
+                ))}
+              </div>
+              <div className="account-info-actions">
+                <button type="button" className="suggestion-guide-secondary" onClick={() => openAccountDialog("delete-account")}>
+                  查看注销账号
+                </button>
+                <button type="button" className="suggestion-guide-primary" onClick={closeAccountDialog}>
+                  我已了解
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {activeAccountDialog === "about" ? (
+            <div className="account-info-modal about-modal" role="dialog" aria-modal="true" aria-label="关于" onClick={(event) => event.stopPropagation()}>
+              <button type="button" className="suggestion-guide-close" onClick={closeAccountDialog} aria-label="关闭关于弹窗">
+                关闭
+              </button>
+              <div className="about-hero">
+                <div className="about-logo-shell">
+                  <Image src="/phyok-logo.png" alt="PhyOK" width={72} height={72} className="about-logo" priority />
+                </div>
+                <div className="about-copy">
+                  <div className="suggestion-guide-kicker">About PhyOK</div>
+                  <h3>心理学空间·自我探索Agent Pro</h3>
+                  <p className="about-slogan">在稳定的心理学坐标里，学习自己，也向更深处继续探索。</p>
+                </div>
+              </div>
+              <div className="about-grid">
+                <div className="about-card">
+                  <span>作者</span>
+                  <strong>SimonWZB</strong>
+                  <p>独立完成从前端、Node BFF 到 Java 微服务与工程化部署的持续建设。</p>
+                </div>
+                <div className="about-card">
+                  <span>联系邮箱</span>
+                  <strong>simon.wzb@qq.com</strong>
+                  <p>用于合作交流、问题沟通、隐私请求与产品建议。</p>
+                </div>
+                <div className="about-card">
+                  <span>产品愿景</span>
+                  <strong>长期主义的心理学学习空间</strong>
+                  <p>以记忆、探索与多模态交互为核心，做一款可持续演进的自我探索网站。</p>
+                </div>
+              </div>
+              <div className="about-footer-note">版权所有 © SimonWZB 2026</div>
+            </div>
+          ) : null}
+          {activeAccountDialog === "feedback" ? (
+            <form
+              className="account-info-modal feedback-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label="投诉反馈"
+              onClick={(event) => event.stopPropagation()}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleSubmitComplaintFeedback();
+              }}
+            >
+              <button type="button" className="suggestion-guide-close" onClick={closeAccountDialog} aria-label="关闭投诉反馈">
+                关闭
+              </button>
+              <div className="suggestion-guide-kicker">帮助我们继续改进</div>
+              <h3>投诉反馈</h3>
+              <p>你的反馈会直接进入 CMS 投诉工作台，运营侧可以查看、跟进并回复。</p>
+              <label className="account-form-field">
+                <span>反馈类型</span>
+                <select value={feedbackCategory} onChange={(event) => setFeedbackCategory(event.target.value as ComplaintFeedbackCategory)}>
+                  {FEEDBACK_CATEGORY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <small>{FEEDBACK_CATEGORY_OPTIONS.find((item) => item.value === feedbackCategory)?.hint}</small>
+              </label>
+              <label className="account-form-field">
+                <span>联系邮箱</span>
+                <input
+                  type="email"
+                  value={feedbackContactEmail}
+                  placeholder="用于接收后续处理结果"
+                  onChange={(event) => setFeedbackContactEmail(event.target.value)}
+                />
+              </label>
+              <label className="account-form-field">
+                <span>反馈内容</span>
+                <textarea
+                  value={feedbackContent}
+                  placeholder="请尽量写清楚遇到的问题、发生时间、期望的处理方式。"
+                  onChange={(event) => setFeedbackContent(event.target.value)}
+                />
+              </label>
+              {feedbackMessage ? <div className="account-inline-message">{feedbackMessage}</div> : null}
+              <div className="account-info-actions">
+                <button type="button" className="suggestion-guide-secondary" onClick={closeAccountDialog}>
+                  先不提交
+                </button>
+                <button
+                  type="submit"
+                  className="suggestion-guide-primary"
+                  disabled={feedbackSubmitting || feedbackContactEmail.trim().length === 0 || feedbackContent.trim().length < 8}
+                >
+                  {feedbackSubmitting ? "正在提交..." : "提交反馈"}
+                </button>
+              </div>
+            </form>
+          ) : null}
+          {activeAccountDialog === "delete-account" ? (
+            <form
+              className="account-info-modal delete-account-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label="注销账号"
+              onClick={(event) => event.stopPropagation()}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleRequestAccountDeletion();
+              }}
+            >
+              <button type="button" className="suggestion-guide-close" onClick={closeAccountDialog} aria-label="关闭注销账号">
+                关闭
+              </button>
+              <div className="suggestion-guide-kicker">账号与数据处理</div>
+              <h3>注销账号</h3>
+              <p>
+                提交注销申请后，我们会按照法律法规和业务流程核验账号身份、处理必要的订单与审计留痕，并逐步完成账号与相关数据的删除或匿名化。
+              </p>
+              <div className="account-warning-card">
+                <strong>提交前请确认</strong>
+                <ul>
+                  <li>已知悉注销后可能无法恢复对话历史、记忆碎片、已购额度与相关记录。</li>
+                  <li>部分订单、审计与合规记录可能因法定义务需要在限定期限内继续保留。</li>
+                  <li>我们可能通过账号邮箱与你联系，以确认申请或同步处理进度。</li>
+                </ul>
+              </div>
+              <label className="account-form-field">
+                <span>注销原因</span>
+                <textarea
+                  value={deleteAccountReason}
+                  placeholder="例如：不再使用、担心隐私、需要清理全部数据等。"
+                  onChange={(event) => setDeleteAccountReason(event.target.value)}
+                />
+              </label>
+              {deleteAccountMessage ? <div className="account-inline-message">{deleteAccountMessage}</div> : null}
+              <div className="account-info-actions">
+                <button type="button" className="suggestion-guide-secondary" onClick={() => openAccountDialog("privacy")}>
+                  返回隐私协议
+                </button>
+                <button
+                  type="submit"
+                  className="suggestion-guide-primary danger"
+                  disabled={deleteAccountSubmitting || deleteAccountReason.trim().length < 4}
+                >
+                  {deleteAccountSubmitting ? "正在提交..." : "提交注销申请"}
+                </button>
+              </div>
+            </form>
+          ) : null}
         </div>
       ) : null}
       {pendingSuggestionChip ? (

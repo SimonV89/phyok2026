@@ -19,6 +19,7 @@ public class PaymentProperties {
     private String alipaySignType = "RSA2";
     private String alipayVersion = "1.0";
     private String alipayPagePayMethod = "alipay.trade.page.pay";
+    private String alipayWapPayMethod = "alipay.trade.wap.pay";
     private String sellerName = "心理学空间";
 
     public String getAppBaseUrl() {
@@ -139,6 +140,14 @@ public class PaymentProperties {
 
     public void setAlipayPagePayMethod(String alipayPagePayMethod) {
         this.alipayPagePayMethod = alipayPagePayMethod;
+    }
+
+    public String getAlipayWapPayMethod() {
+        return alipayWapPayMethod;
+    }
+
+    public void setAlipayWapPayMethod(String alipayWapPayMethod) {
+        this.alipayWapPayMethod = alipayWapPayMethod;
     }
 
     public String getSellerName() {

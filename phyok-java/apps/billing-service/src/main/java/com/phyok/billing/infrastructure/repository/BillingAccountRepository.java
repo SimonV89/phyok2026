@@ -2,6 +2,7 @@ package com.phyok.billing.infrastructure.repository;
 
 import com.phyok.billing.infrastructure.mybatis.entity.BillingAccountDO;
 import com.phyok.billing.infrastructure.mybatis.entity.BillingGrantRecordDO;
+import com.phyok.billing.infrastructure.mybatis.entity.BillingUsageRecordDO;
 import com.phyok.billing.infrastructure.mybatis.mapper.BillingAccountMapper;
 import org.springframework.stereotype.Repository;
 
@@ -29,5 +30,13 @@ public class BillingAccountRepository {
 
     public boolean insertGrantRecord(BillingGrantRecordDO grantRecord) {
         return billingAccountMapper.insertGrantRecord(grantRecord) > 0;
+    }
+
+    public boolean insertUsageRecord(BillingUsageRecordDO usageRecord) {
+        return billingAccountMapper.insertUsageRecord(usageRecord) > 0;
+    }
+
+    public boolean consumeQuota(String id, int quota) {
+        return billingAccountMapper.consumeQuota(id, quota) > 0;
     }
 }

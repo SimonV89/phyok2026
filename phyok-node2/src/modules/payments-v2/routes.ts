@@ -7,7 +7,8 @@ import { createFailure, createSuccess, ERROR_CODES, extractExternalHeaders } fro
 import { proxyJavaJson } from "../../packages/domain-clients/java-service-proxy";
 
 const createAlipayOrderSchema = z.object({
-  planId: z.enum(["starter", "standard", "unlimited"])
+  planId: z.enum(["starter", "standard", "unlimited"]),
+  scene: z.enum(["desktop", "mobile"]).default("desktop")
 });
 
 const DEGRADED_PLAN_AMOUNT_FEN: Record<z.infer<typeof createAlipayOrderSchema>["planId"], number> = {
@@ -50,9 +51,10 @@ export const paymentsV2Routes = async (app: FastifyInstance) => {
         quota: parsed.data.planId === "starter" ? 10 : parsed.data.planId === "standard" ? 30 : 100,
         status: "CREATED",
         paymentChannel: "alipay",
+        paymentMode: parsed.data.scene === "mobile" ? "WAP" : "PAGE",
         payUrl: `https://openapi.alipay.com/gateway.do?mock=1&orderNo=${encodeURIComponent(orderNo)}`,
         qrCodeUrl: `https://render.alipay.com/p/s/i?mock=1&orderNo=${encodeURIComponent(orderNo)}`,
-        qrCodeContent: `https://render.alipay.com/p/s/i?mock=1&orderNo=${encodeURIComponent(orderNo)}`,
+        qrCodeContent: `https://openapi.alipay.com/gateway.do?mock=1&orderNo=${encodeURIComponent(orderNo)}`,
         expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString()
       });
     }

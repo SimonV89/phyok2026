@@ -32,7 +32,16 @@ public class AlipaySignatureService {
     public String buildPagePayUrl(PaymentOrderService.PaymentOrderRecord order) {
         Map<String, String> params = buildSignedParams(
                 paymentProperties.getAlipayPagePayMethod(),
-                buildBizContent(order),
+                buildBizContent(order, "FAST_INSTANT_TRADE_PAY"),
+                true
+        );
+        return paymentProperties.getAlipayGateway() + "?" + toUrlEncodedQuery(params);
+    }
+
+    public String buildWapPayUrl(PaymentOrderService.PaymentOrderRecord order) {
+        Map<String, String> params = buildSignedParams(
+                paymentProperties.getAlipayWapPayMethod(),
+                buildBizContent(order, "QUICK_WAP_WAY"),
                 true
         );
         return paymentProperties.getAlipayGateway() + "?" + toUrlEncodedQuery(params);
@@ -77,11 +86,12 @@ public class AlipaySignatureService {
         }
     }
 
-    private String buildBizContent(PaymentOrderService.PaymentOrderRecord order) {
+    private String buildBizContent(PaymentOrderService.PaymentOrderRecord order, String productCode) {
         return String.format(
                 Locale.ROOT,
-                "{\"out_trade_no\":\"%s\",\"product_code\":\"FAST_INSTANT_TRADE_PAY\",\"total_amount\":\"%s\",\"subject\":\"%s\",\"timeout_express\":\"%s\"}",
+                "{\"out_trade_no\":\"%s\",\"product_code\":\"%s\",\"total_amount\":\"%s\",\"subject\":\"%s\",\"timeout_express\":\"%s\"}",
                 escapeJson(order.orderNo()),
+                escapeJson(productCode),
                 formatFen(order.amountFen()),
                 escapeJson(order.subject()),
                 escapeJson(paymentProperties.getAlipayTimeoutExpress())
@@ -108,7 +118,6 @@ public class AlipaySignatureService {
         return new TreeMap<>(params).entrySet().stream()
                 .filter(entry -> entry.getValue() != null && !entry.getValue().isBlank())
                 .filter(entry -> !"sign".equals(entry.getKey()))
-                .filter(entry -> !"sign_type".equals(entry.getKey()))
                 .map(entry -> entry.getKey() + "=" + entry.getValue())
                 .collect(Collectors.joining("&"));
     }

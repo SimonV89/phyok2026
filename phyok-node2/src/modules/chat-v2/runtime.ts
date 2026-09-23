@@ -64,6 +64,7 @@ type ChatRunInput = {
   appId: string;
   userId: string;
   sessionId: string;
+  userEmail?: string;
   conversationId: string;
   message: string;
   attachments: ChatV2Attachment[];
@@ -138,6 +139,7 @@ function toPersistedRun(run: ChatRunState): PersistedChatRunState {
       appId: run.input.appId,
       userId: run.input.userId,
       sessionId: run.input.sessionId,
+      userEmail: run.input.userEmail,
       conversationId: run.input.conversationId,
       message: run.input.message,
       attachments: run.input.attachments
@@ -174,6 +176,7 @@ function hydratePersistedRun(record: PersistedChatRunState, now: number): ChatRu
       appId: record.input.appId,
       userId: record.input.userId,
       sessionId: record.input.sessionId,
+      userEmail: record.input.userEmail,
       conversationId: record.input.conversationId,
       message: record.input.message,
       attachments: record.input.attachments
@@ -353,7 +356,8 @@ async function runPipeline(run: ChatRunState): Promise<void> {
         traceId: run.input.traceId,
         appId: run.input.appId,
         userId: run.input.userId,
-        sessionId: run.input.sessionId
+        sessionId: run.input.sessionId,
+        userEmail: run.input.userEmail
       },
       signal: run.abortController.signal,
       emit: (event, data) => {
@@ -422,6 +426,7 @@ export function createChatRun(input: {
   appId: string;
   userId?: string;
   sessionId?: string;
+  userEmail?: string;
   conversationId?: string;
   message: string;
   attachments?: Array<Partial<ChatV2Attachment>>;
@@ -447,6 +452,7 @@ export function createChatRun(input: {
       appId: input.appId,
       userId: input.userId?.trim() || "guest_anonymous",
       sessionId: input.sessionId?.trim() || `sess_${runId}`,
+      userEmail: input.userEmail?.trim() || undefined,
       conversationId,
       message: input.message.trim(),
       attachments

@@ -4,6 +4,7 @@ import {
   type MemoryGateCheckRequest
 } from "../contracts/grpc";
 import type {
+  BillingConsumeResult,
   BillingPrecheckResult,
   DomainClients,
   GatewayContext,
@@ -90,5 +91,12 @@ export class GrpcJavaDomainClient implements DomainClients {
 
   async precheckBilling(ctx: GatewayContext): Promise<BillingPrecheckResult> {
     return this.options.fallback.precheckBilling(ctx);
+  }
+
+  async consumeBilling(
+    ctx: GatewayContext,
+    input: { runId: string; scene: string; quotaCost?: number }
+  ): Promise<BillingConsumeResult> {
+    return this.options.fallback.consumeBilling(ctx, input);
   }
 }

@@ -24,9 +24,9 @@ public class MemoryProperties {
     private String semanticChunkModel = "Pro/deepseek-ai/DeepSeek-V4";
     private int semanticChunkTimeoutMs = 30000;
     private int semanticChunkMaxChunks = 6;
-    private int semanticChunkMinChars = 80;
-    private int semanticChunkMaxChars = 280;
-    private int semanticChunkLlmThresholdChars = 120;
+    private int semanticChunkMinChars = 48;
+    private int semanticChunkMaxChars = 180;
+    private int semanticChunkLlmThresholdChars = 90;
     private String embeddingBaseUrl = "https://api.siliconflow.cn/v1";
     private String embeddingApiKey = "";
     private String embeddingModel = "BAAI/bge-m3";

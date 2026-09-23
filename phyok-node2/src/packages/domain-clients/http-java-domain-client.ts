@@ -7,6 +7,7 @@ import {
   type ApiSuccess
 } from "../contracts/api";
 import type {
+  BillingConsumeResult,
   BillingPrecheckResult,
   DomainClients,
   GatewayContext,
@@ -184,6 +185,35 @@ export class HttpJavaDomainClient implements DomainClients {
     }
   }
 
+  async consumeBilling(
+    ctx: GatewayContext,
+    input: { runId: string; scene: string; quotaCost?: number }
+  ): Promise<BillingConsumeResult> {
+    try {
+      return await this.request<BillingConsumeResult>(ctx, {
+        method: "POST",
+        path: "/internal/billing/usage-record",
+        idempotencyKey: `${input.runId}:billing-consume`,
+        body: {
+          runId: input.runId,
+          scene: input.scene,
+          quotaCost: input.quotaCost ?? 1
+        }
+      });
+    } catch (error) {
+      if (!env.localDebugAllowDegraded) {
+        throw error;
+      }
+      return {
+        accepted: true,
+        recorded: true,
+        consumed: true,
+        idempotent: false,
+        plan: "local-debug"
+      };
+    }
+  }
+
   private async request<T>(
     ctx: GatewayContext,
     options: {
@@ -201,6 +231,7 @@ export class HttpJavaDomainClient implements DomainClients {
       appId: ctx.appId,
       userId: ctx.userId,
       sessionId: ctx.sessionId,
+      userEmail: ctx.userEmail,
       callerService: this.options.callerService || "agent-runtime-langgraph"
     });
 
@@ -227,6 +258,7 @@ export class HttpJavaDomainClient implements DomainClients {
           "X-App-Id": internalHeaders.appId,
           "X-User-Id": internalHeaders.userId,
           "X-Session-Id": internalHeaders.sessionId,
+          ...(internalHeaders.userEmail ? { "X-User-Email": internalHeaders.userEmail } : {}),
           "X-Caller-Service": internalHeaders.callerService,
           ...(internalHeaders.tenantId ? { "X-Tenant-Id": internalHeaders.tenantId } : {}),
           ...(internalHeaders.authorization ? { Authorization: internalHeaders.authorization } : {}),

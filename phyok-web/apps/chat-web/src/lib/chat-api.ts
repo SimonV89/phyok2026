@@ -222,6 +222,7 @@ export type CreateAlipayOrderResponse = {
     quota?: number;
     status?: string;
     paymentChannel: string;
+    paymentMode?: "PAGE" | "WAP";
     payUrl: string;
     qrCodeUrl: string;
     qrCodeContent?: string;
@@ -256,6 +257,39 @@ export type AuditEventPageResponse = {
     total: number;
     items: AuditEventResponse[];
   };
+};
+
+export type ComplaintFeedbackCategory = "product" | "payment" | "privacy" | "experience" | "other";
+
+export type ComplaintFeedbackResponse = {
+  code: string;
+  message: string;
+  data: {
+    id: string;
+    userId?: string | null;
+    userEmail?: string | null;
+    contactEmail?: string | null;
+    conversationId?: string | null;
+    category: ComplaintFeedbackCategory;
+    content: string;
+    status: "OPEN" | "REPLIED";
+    replyContent?: string | null;
+    replyBy?: string | null;
+    repliedAt?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+};
+
+export type DeleteAccountRequestResponse = {
+  code: string;
+  message: string;
+  data?: {
+    jobId?: string;
+    id?: string;
+    status?: string;
+    reason?: string;
+  } | null;
 };
 
 export type MemoryStarMapNode = {
@@ -627,7 +661,10 @@ export async function fetchBillingPlans(): Promise<BillingPlansResponse["data"]>
   return payload.data;
 }
 
-export async function createAlipayOrder(planId: string): Promise<CreateAlipayOrderResponse["data"]> {
+export async function createAlipayOrder(
+  planId: string,
+  scene: "desktop" | "mobile" = "desktop"
+): Promise<CreateAlipayOrderResponse["data"]> {
   const response = await fetch(buildApiPath("/v2/payments/alipay/create"), {
     method: "POST",
     headers: {
@@ -635,7 +672,8 @@ export async function createAlipayOrder(planId: string): Promise<CreateAlipayOrd
       ...buildClientHeaders()
     },
     body: JSON.stringify({
-      planId
+      planId,
+      scene
     })
   });
   const payload = (await response.json()) as CreateAlipayOrderResponse | ApiFailureResponse;
@@ -663,6 +701,48 @@ export async function fetchPaymentOrder(orderNo: string, options?: { refresh?: b
     throw new Error("message" in payload ? payload.message : "查询支付宝订单失败。");
   }
   return (payload as CreateAlipayOrderResponse).data;
+}
+
+export async function submitComplaintFeedback(options: {
+  userId?: string;
+  userEmail?: string;
+  contactEmail?: string;
+  conversationId?: string;
+  category: ComplaintFeedbackCategory;
+  content: string;
+}): Promise<ComplaintFeedbackResponse["data"]> {
+  const response = await fetch("/api/feedback", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(options)
+  });
+  const payload = (await response.json().catch(() => null)) as ComplaintFeedbackResponse | ApiFailureResponse | null;
+  if (!response.ok || !payload || payload.code !== "OK" || !("data" in payload) || !payload.data) {
+    throw new Error(payload?.message || "投诉反馈提交失败。");
+  }
+  return (payload as ComplaintFeedbackResponse).data;
+}
+
+export async function requestAccountDeletion(options: {
+  userId: string;
+  userEmail: string;
+  appId?: string;
+  reason: string;
+}): Promise<DeleteAccountRequestResponse["data"]> {
+  const response = await fetch("/api/account/delete-request", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(options)
+  });
+  const payload = (await response.json().catch(() => null)) as DeleteAccountRequestResponse | ApiFailureResponse | null;
+  if (!response.ok || !payload || payload.code !== "OK") {
+    throw new Error(payload?.message || "注销申请提交失败。");
+  }
+  return "data" in payload ? payload.data ?? null : null;
 }
 
 export async function fetchAuditEvents(options?: {

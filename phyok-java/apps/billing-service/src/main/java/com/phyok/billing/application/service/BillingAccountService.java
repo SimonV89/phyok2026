@@ -2,8 +2,10 @@ package com.phyok.billing.application.service;
 
 import com.phyok.billing.infrastructure.mybatis.entity.BillingAccountDO;
 import com.phyok.billing.infrastructure.mybatis.entity.BillingGrantRecordDO;
+import com.phyok.billing.infrastructure.mybatis.entity.BillingUsageRecordDO;
 import com.phyok.billing.infrastructure.repository.BillingAccountRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -14,6 +16,8 @@ import java.util.UUID;
 @Service
 public class BillingAccountService {
     private static final String DEFAULT_APP_ID = "app-self-explore";
+    private static final int DEFAULT_LOGIN_QUOTA = 20;
+    private static final int SEED_USER_QUOTA = 100;
     private final BillingAccountRepository billingAccountRepository;
 
     public BillingAccountService(BillingAccountRepository billingAccountRepository) {
@@ -68,6 +72,66 @@ public class BillingAccountService {
         return payload;
     }
 
+    public Map<String, Object> buildPrecheckPayload(String userEmail, String scene) {
+        Map<String, Object> account = buildAccountPayload(userEmail);
+        int remaining = extractInt(account.get("remainingTokens"));
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("allowed", remaining > 0);
+        payload.put("plan", account.get("plan"));
+        payload.put("quotaState", account.get("quotaState"));
+        payload.put("remainingTokens", remaining);
+        payload.put("scene", scene == null || scene.isBlank() ? "unknown" : scene);
+        return payload;
+    }
+
+    @Transactional
+    public Map<String, Object> recordSuccessfulUsage(String userEmail, String runId, String scene, int quotaCost) {
+        if (runId == null || runId.isBlank()) {
+            throw new IllegalArgumentException("缺少有效的 runId，无法记录本次调用。");
+        }
+        if (quotaCost <= 0) {
+            throw new IllegalArgumentException("额度扣减次数必须大于 0。");
+        }
+
+        String normalizedEmail = normalizeEmail(userEmail);
+        ensureAccountExists(normalizedEmail);
+        BillingAccountDO account = billingAccountRepository.findByAppAndEmail(DEFAULT_APP_ID, normalizedEmail);
+        if (account == null) {
+            throw new IllegalStateException("账单账户初始化失败。");
+        }
+
+        BillingUsageRecordDO usageRecord = new BillingUsageRecordDO();
+        usageRecord.setId("usage_" + UUID.randomUUID());
+        usageRecord.setAppId(DEFAULT_APP_ID);
+        usageRecord.setUserEmail(normalizedEmail);
+        usageRecord.setRunId(runId.trim());
+        usageRecord.setScene(scene == null || scene.isBlank() ? "chat.success" : scene.trim());
+        usageRecord.setQuotaCost(quotaCost);
+
+        boolean recorded = billingAccountRepository.insertUsageRecord(usageRecord);
+        if (recorded) {
+            boolean consumed = billingAccountRepository.consumeQuota(account.getId(), quotaCost);
+            if (!consumed) {
+                throw new IllegalStateException("BILLING_QUOTA_EXHAUSTED: 可用调用次数已用完，请先购买额度后继续。");
+            }
+        }
+
+        BillingAccountDO latest = billingAccountRepository.findByAppAndEmail(DEFAULT_APP_ID, normalizedEmail);
+        if (latest == null) {
+            throw new IllegalStateException("额度扣减后无法重新加载账户。");
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>(toAccountPayload(latest));
+        payload.put("accepted", true);
+        payload.put("recorded", recorded);
+        payload.put("consumed", recorded);
+        payload.put("idempotent", !recorded);
+        payload.put("runId", runId.trim());
+        payload.put("scene", usageRecord.getScene());
+        payload.put("quotaCost", quotaCost);
+        return payload;
+    }
+
     private void ensureAccountExists(String userEmail) {
         BillingAccountDO existing = billingAccountRepository.findByAppAndEmail(DEFAULT_APP_ID, userEmail);
         if (existing != null) {
@@ -79,7 +143,7 @@ public class BillingAccountService {
         account.setAppId(DEFAULT_APP_ID);
         account.setUserEmail(userEmail);
         account.setPlanId(seedUser ? "seed-gift" : "starter");
-        account.setBaseQuota(seedUser ? 100 : 10);
+        account.setBaseQuota(seedUser ? SEED_USER_QUOTA : DEFAULT_LOGIN_QUOTA);
         account.setPurchasedQuota(0);
         account.setConsumedQuota(0);
         account.setSeedUser(seedUser);
@@ -91,9 +155,9 @@ public class BillingAccountService {
         boolean seedUser = isSeedUser(userEmail);
         return new LinkedHashMap<>(Map.of(
                 "plan", seedUser ? "seed-gift" : "starter",
-                "monthlyTokenLimit", seedUser ? 100 : 10,
+                "monthlyTokenLimit", seedUser ? SEED_USER_QUOTA : DEFAULT_LOGIN_QUOTA,
                 "consumedTokens", 0,
-                "remainingTokens", seedUser ? 100 : 10,
+                "remainingTokens", seedUser ? SEED_USER_QUOTA : DEFAULT_LOGIN_QUOTA,
                 "quotaState", "HEALTHY",
                 "billingStatus", seedUser ? "SEEDED" : "ACTIVE",
                 "paymentChannel", "alipay",
@@ -128,5 +192,19 @@ public class BillingAccountService {
 
     private boolean isSeedUser(String userEmail) {
         return userEmail != null && userEmail.trim().toLowerCase(Locale.ROOT).matches("^100(1\\d|[2-8]\\d|9\\d)@xx\\.com$");
+    }
+
+    private int extractInt(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 }

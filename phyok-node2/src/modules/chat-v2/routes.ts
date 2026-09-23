@@ -132,6 +132,7 @@ export const chatV2Routes = async (app: FastifyInstance) => {
       appId: externalHeaders.appId,
       userId: getStringHeader(request.headers, "x-user-id"),
       sessionId: getStringHeader(request.headers, "x-session-id"),
+      userEmail: externalHeaders.userEmail,
       conversationId: parsed.data.conversationId,
       message: parsed.data.message,
       attachments

@@ -36,6 +36,7 @@ export type InternalRequestHeaders = {
   appId: string;
   userId: string;
   sessionId: string;
+  userEmail?: string;
   callerService: string;
 };
 
@@ -62,6 +63,7 @@ export const INTERNAL_HEADER_NAMES = {
   appId: "x-app-id",
   userId: "x-user-id",
   sessionId: "x-session-id",
+  userEmail: "x-user-email",
   callerService: "x-caller-service"
 } as const;
 
@@ -96,6 +98,7 @@ export function buildInternalHeaders(input: {
   appId: string;
   userId: string;
   sessionId: string;
+  userEmail?: string;
   authorization?: string;
   callerService?: string;
 }): InternalRequestHeaders {
@@ -107,6 +110,7 @@ export function buildInternalHeaders(input: {
     appId: input.appId,
     userId: input.userId,
     sessionId: input.sessionId,
+    userEmail: input.userEmail,
     callerService: input.callerService || "api-bff-gateway"
   };
 }
@@ -126,6 +130,9 @@ export function buildGrpcMetadata(headers: InternalRequestHeaders): GrpcMetadata
   }
   if (headers.tenantId) {
     metadata[INTERNAL_HEADER_NAMES.tenantId] = headers.tenantId;
+  }
+  if (headers.userEmail) {
+    metadata[INTERNAL_HEADER_NAMES.userEmail] = headers.userEmail;
   }
   return metadata;
 }

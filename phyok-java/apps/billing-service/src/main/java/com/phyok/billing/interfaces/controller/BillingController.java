@@ -17,9 +17,9 @@ import java.util.Map;
 @RequestMapping
 public class BillingController {
     private static final List<Map<String, Object>> PLAN_ITEMS = List.of(
-            createPlan("starter", "尝鲜", 500, 10, "适合先体验一段聚焦式探索。", "10 次对话额度", false),
-            createPlan("standard", "标准", 1000, 30, "适合稳定使用，覆盖连续整理与复盘。", "30 次对话额度", true),
-            createPlan("unlimited", "畅享", 2500, 100, "适合高频深入使用，保留更充足的探索空间。", "100 次对话额度", false)
+            createPlan("starter", "尝鲜", 500, 10, "适合先体验一段聚焦式探索。", "10 次有效调用", false),
+            createPlan("standard", "标准", 1000, 30, "适合稳定使用，覆盖连续整理与复盘。", "30 次有效调用", true),
+            createPlan("unlimited", "畅享", 2500, 100, "适合高频深入使用，保留更充足的探索空间。", "100 次有效调用", false)
     );
     private final BillingAccountService billingAccountService;
 
@@ -80,25 +80,39 @@ public class BillingController {
             @RequestHeader(value = "X-User-Email", required = false) String userEmail,
             @RequestBody(required = false) Map<String, Object> body
     ) {
-        Map<String, Object> account = billingAccountService.buildAccountPayload(userEmail);
-        return ApiResponse.ok(requestIdOrDefault(requestId), Map.of(
-                "allowed", true,
-                "plan", account.get("plan"),
-                "quotaState", account.get("quotaState"),
-                "scene", body == null ? "unknown" : body.getOrDefault("scene", "unknown")
-        ));
+        String scene = body == null ? "unknown" : String.valueOf(body.getOrDefault("scene", "unknown"));
+        return ApiResponse.ok(requestIdOrDefault(requestId), billingAccountService.buildPrecheckPayload(userEmail, scene));
     }
 
     @PostMapping("/internal/billing/usage-record")
     public ApiResponse<Map<String, Object>> usageRecord(
             @RequestHeader(value = "X-Request-Id", required = false) String requestId,
+            @RequestHeader(value = "X-User-Email", required = false) String userEmail,
             @RequestBody(required = false) Map<String, Object> body
     ) {
-        return ApiResponse.ok(requestIdOrDefault(requestId), Map.of(
-                "accepted", true,
-                "recorded", true,
-                "usage", body == null ? Map.of() : body
-        ));
+        Map<String, Object> payload = body == null ? Map.of() : body;
+        String runId = String.valueOf(payload.getOrDefault("runId", "")).trim();
+        String scene = String.valueOf(payload.getOrDefault("scene", "chat.success")).trim();
+        int quotaCost = Math.max(1, parseInt(payload.get("quotaCost")));
+        try {
+            return ApiResponse.ok(
+                    requestIdOrDefault(requestId),
+                    billingAccountService.recordSuccessfulUsage(userEmail, runId, scene, quotaCost)
+            );
+        } catch (IllegalArgumentException exception) {
+            return ApiResponse.fail(requestIdOrDefault(requestId), "BILLING_USAGE_INVALID", exception.getMessage(), null);
+        } catch (IllegalStateException exception) {
+            String message = exception.getMessage() == null ? "额度扣减失败。" : exception.getMessage();
+            if (message.startsWith("BILLING_QUOTA_EXHAUSTED:")) {
+                return ApiResponse.fail(
+                        requestIdOrDefault(requestId),
+                        "BILLING_QUOTA_EXHAUSTED",
+                        message.substring("BILLING_QUOTA_EXHAUSTED:".length()).trim(),
+                        null
+                );
+            }
+            return ApiResponse.fail(requestIdOrDefault(requestId), "BILLING_USAGE_FAILED", message, null);
+        }
     }
 
     @PostMapping("/internal/billing/grant-purchase")

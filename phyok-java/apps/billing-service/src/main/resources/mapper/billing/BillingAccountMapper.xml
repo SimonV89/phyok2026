@@ -60,4 +60,22 @@
         )
         on conflict (order_no) do nothing
     </insert>
+
+    <insert id="insertUsageRecord">
+        insert into billing_usage_record (
+            id, app_id, user_email, run_id, scene, quota_cost, created_at
+        ) values (
+            #{id}, #{appId}, #{userEmail}, #{runId}, #{scene}, #{quotaCost}, now()
+        )
+        on conflict (app_id, user_email, run_id) do nothing
+    </insert>
+
+    <update id="consumeQuota">
+        update billing_account
+        set consumed_quota = consumed_quota + #{quota},
+            updated_at = now(),
+            version = version + 1
+        where id = #{id}
+          and (base_quota + purchased_quota - consumed_quota) >= #{quota}
+    </update>
 </mapper>

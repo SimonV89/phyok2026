@@ -24,6 +24,7 @@ import java.util.Set;
 @Service
 public class SemanticChunkService {
     private static final Logger log = LoggerFactory.getLogger(SemanticChunkService.class);
+    private static final String ATTACHMENT_PLACEHOLDER = "请结合我上传的内容继续。";
     private static final Set<String> TIMELINE_ROOTS = Set.of("EARLY", "CHILDHOOD", "STUDENT", "WORK", "TODAY");
     private static final Set<String> FRAGMENT_TYPES = Set.of("FACT", "EVENT", "RELATION", "EMOTION");
     private static final String VISIBILITY_PRIVATE = "PRIVATE";
@@ -273,14 +274,15 @@ public class SemanticChunkService {
     private List<String> packUnits(List<String> units) {
         List<String> chunks = new ArrayList<>();
         StringBuilder current = new StringBuilder();
+        int preferredChunkChars = Math.max(memoryProperties.getSemanticChunkMinChars() + 28, memoryProperties.getSemanticChunkMaxChars() - 44);
         for (String unit : units) {
             String safeUnit = unit.trim();
             if (safeUnit.isBlank()) {
                 continue;
             }
             if (current.length() > 0
-                    && current.length() + 1 + safeUnit.length() > memoryProperties.getSemanticChunkMaxChars()
-                    && current.length() >= memoryProperties.getSemanticChunkMinChars()) {
+                    && (current.length() + 1 + safeUnit.length() > memoryProperties.getSemanticChunkMaxChars()
+                    || (current.length() >= preferredChunkChars && safeUnit.length() >= Math.max(memoryProperties.getSemanticChunkMinChars() / 2, 24)))) {
                 chunks.add(current.toString().trim());
                 current = new StringBuilder();
             }
@@ -316,7 +318,7 @@ public class SemanticChunkService {
                 if (safeSentence.isBlank()) {
                     continue;
                 }
-                if (safeSentence.length() > memoryProperties.getSemanticChunkMaxChars()) {
+                if (shouldSplitNarrativeSentence(safeSentence)) {
                     units.addAll(splitLongSentence(safeSentence));
                 } else {
                     units.add(safeSentence);
@@ -328,15 +330,17 @@ public class SemanticChunkService {
 
     private List<String> splitLongSentence(String sentence) {
         List<String> pieces = new ArrayList<>();
-        String[] segments = sentence.split("(?<=[，、：,:])\\s*");
+        String[] segments = sentence.split("(?<=[，、：,:])\\s*|(?<=，)(?=但|可是|不过|后来|然后|于是|结果|反而|同时|那时|当时|直到|忽然|突然|慢慢地|渐渐|非常|特别|记得|记忆深刻|印象很深)");
         StringBuilder current = new StringBuilder();
+        int preferredChunkChars = Math.max(memoryProperties.getSemanticChunkMinChars() + 18, memoryProperties.getSemanticChunkMaxChars() - 72);
         for (String segment : segments) {
             String safeSegment = segment.trim();
             if (safeSegment.isBlank()) {
                 continue;
             }
             if (current.length() > 0
-                    && current.length() + safeSegment.length() > memoryProperties.getSemanticChunkMaxChars()) {
+                    && (current.length() + safeSegment.length() > memoryProperties.getSemanticChunkMaxChars()
+                    || (current.length() >= preferredChunkChars && shouldStartNewPiece(safeSegment)))) {
                 pieces.add(current.toString().trim());
                 current = new StringBuilder();
             }
@@ -355,6 +359,35 @@ public class SemanticChunkService {
             return hardSplit(pieces.get(0));
         }
         return pieces;
+    }
+
+    private boolean shouldSplitNarrativeSentence(String sentence) {
+        if (sentence.length() > memoryProperties.getSemanticChunkMaxChars()) {
+            return true;
+        }
+        if (sentence.length() < Math.max(memoryProperties.getSemanticChunkMinChars(), 42)) {
+            return false;
+        }
+        return countNarrativeDelimiters(sentence) >= 4 || containsNarrativeShift(sentence);
+    }
+
+    private int countNarrativeDelimiters(String sentence) {
+        int count = 0;
+        for (int index = 0; index < sentence.length(); index += 1) {
+            char current = sentence.charAt(index);
+            if (current == '，' || current == '、' || current == ',' || current == '：' || current == ':') {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
+    private boolean containsNarrativeShift(String sentence) {
+        return containsKeywords(sentence, List.of("但是", "可是", "不过", "后来", "然后", "于是", "结果", "反而", "同时", "直到", "突然", "忽然", "非常", "特别", "记忆深刻", "印象很深"));
+    }
+
+    private boolean shouldStartNewPiece(String segment) {
+        return containsKeywords(segment, List.of("但是", "可是", "不过", "后来", "然后", "于是", "结果", "反而", "同时", "那时", "当时", "直到", "忽然", "突然", "嗯", "记忆深刻", "印象很深", "非常", "特别"));
     }
 
     private String writeRequestBody(String contentText, String requestedTimelineRoot) throws IOException {
@@ -443,11 +476,17 @@ public class SemanticChunkService {
         if (contentText == null || contentText.isBlank()) {
             return "待补充记忆内容";
         }
-        return contentText
+        String normalized = contentText
                 .replace("\r\n", "\n")
                 .replaceAll("[\\t\\x0B\\f]+", " ")
                 .replaceAll("\\n{3,}", "\n\n")
                 .trim();
+        if (normalized.equals(ATTACHMENT_PLACEHOLDER)) {
+            return "待补充记忆内容";
+        }
+        normalized = normalized.replaceFirst("^请结合我上传的内容继续。\\s*", "");
+        normalized = normalized.replaceFirst("^附件(?:补充|内容)[:：]\\s*", "");
+        return normalized.isBlank() ? "待补充记忆内容" : normalized;
     }
 
     private String normalizeChunkContent(String contentText) {

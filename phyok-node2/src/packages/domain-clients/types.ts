@@ -11,6 +11,7 @@ export type GatewayContext = {
   appId: string;
   userId: string;
   sessionId: string;
+  userEmail?: string;
 };
 
 export type VerifiedIdentity = {
@@ -31,6 +32,17 @@ export type MemoryGateResult = {
 export type BillingPrecheckResult = {
   allowed: boolean;
   plan: string;
+  quotaState?: string;
+  remainingTokens?: number;
+};
+
+export type BillingConsumeResult = {
+  accepted: boolean;
+  recorded: boolean;
+  consumed: boolean;
+  idempotent: boolean;
+  plan: string;
+  remainingTokens?: number;
 };
 
 export type AuditTracePhase = "start" | "complete" | "error";
@@ -47,4 +59,8 @@ export type DomainClients = {
   ): Promise<Record<string, unknown>>;
   emitAuditTrace(ctx: GatewayContext, phase: AuditTracePhase): Promise<void>;
   precheckBilling(ctx: GatewayContext): Promise<BillingPrecheckResult>;
+  consumeBilling(
+    ctx: GatewayContext,
+    input: { runId: string; scene: string; quotaCost?: number }
+  ): Promise<BillingConsumeResult>;
 };

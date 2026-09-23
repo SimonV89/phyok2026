@@ -2,6 +2,7 @@ import {
   getDomainClients,
   type GatewayContext
 } from "../../domain-clients";
+import { ERROR_CODES } from "../../contracts/api";
 import type { StreamEventName, SseEventPayloadMap } from "../../contracts/sse";
 import {
   bufferToDataUrl,
@@ -127,22 +128,32 @@ function inferTimelineRoot(text: string) {
 }
 
 function shouldAutoPersistMemory(state: SelfExploreState) {
-  const normalized = state.query.trim();
+  const normalized = normalizeUserQueryForMemory(state.query);
   if (!normalized || normalized === "请把这轮整理出的个人记忆线索沉淀下来。") {
     return false;
   }
   return state.primaryIntent === "memory_create" || containsAny(normalized, AUTO_MEMORY_CAPTURE_PATTERNS);
 }
 
-function buildMemoryContentForPersistence(state: SelfExploreState) {
-  const attachmentContext = state.multimodalDigest.attachments
+function normalizeUserQueryForMemory(query: string) {
+  const normalized = query.trim();
+  if (!normalized || normalized === "请结合我上传的内容继续。") {
+    return "";
+  }
+  return normalized;
+}
+
+function buildAttachmentContextText(state: SelfExploreState) {
+  return state.multimodalDigest.attachments
     .map((item) => item.extractedText || item.summary)
     .filter(Boolean)
     .join("\n");
-  return clampPromptText(
-    [state.query.trim(), attachmentContext ? `附件补充：\n${attachmentContext}` : ""].filter(Boolean).join("\n\n"),
-    2400
-  );
+}
+
+function buildMemoryContentForPersistence(state: SelfExploreState) {
+  const normalizedQuery = normalizeUserQueryForMemory(state.query);
+  const attachmentContext = buildAttachmentContextText(state);
+  return clampPromptText([normalizedQuery, attachmentContext].filter(Boolean).join("\n\n"), 2400);
 }
 
 function getSchoolLabel(school: string): string {
@@ -721,6 +732,7 @@ function buildModelMessages(state: SelfExploreState, includeImageBlocks = true):
 export async function executeSelfExploreFlow(input: ExecuteInput) {
   const domainClients = getDomainClients();
   let activeContext: GatewayContext = { ...input.context };
+  let modelCompletionSucceeded = false;
   const state = createInitialSelfExploreState({
     runId: input.runId,
     requestId: input.requestId,
@@ -758,7 +770,10 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
     sessionId: identity.sessionId || activeContext.sessionId
   };
   await domainClients.emitAuditTrace(activeContext, "start");
-  await domainClients.precheckBilling(activeContext);
+  const billingPrecheck = await domainClients.precheckBilling(activeContext);
+  if (!billingPrecheck.allowed) {
+    throw new Error(`${ERROR_CODES.BFF_RATE_LIMITED}: 有效调用次数已用完，请先购买额度后继续。`);
+  }
 
   await emitTool("parse_multimodal", "多模态入口预处理", async () => {
     if (state.attachments.length === 0) {
@@ -776,14 +791,12 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
 
   await emitTool("input-normalizer", "输入规范化", async () => {
     const attachmentContext = clampPromptText(
-      state.multimodalDigest.attachments
-        .map((item) => item.extractedText || item.summary)
-        .filter(Boolean)
-        .join("\n"),
+      buildAttachmentContextText(state),
       4200
     );
+    const normalizedQuery = normalizeUserQueryForMemory(state.query);
     state.normalizedInput = {
-      plainText: [state.query.trim(), attachmentContext ? `附件补充：\n${attachmentContext}` : ""].filter(Boolean).join("\n\n"),
+      plainText: [normalizedQuery, attachmentContext ? `附件内容：\n${attachmentContext}` : ""].filter(Boolean).join("\n\n"),
       summary:
         state.attachments.length > 0
           ? `文本输入已归一化，并完成附件理解：\n${state.multimodalDigest.summary}`
@@ -1020,6 +1033,7 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
       if (!state.output.response) {
         throw new Error("模型没有返回有效内容。");
       }
+      modelCompletionSucceeded = true;
     } catch (error) {
       const fallback = buildResponse(state);
       state.output.response = fallback;
@@ -1062,6 +1076,14 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
             error instanceof Error ? `记忆入库失败，本轮不会进入星图：${error.message}` : "记忆入库失败，本轮不会进入星图。"
         });
       }
+    });
+  }
+
+  if (modelCompletionSucceeded) {
+    await domainClients.consumeBilling(activeContext, {
+      runId: state.runId,
+      scene: "chat.success",
+      quotaCost: 1
     });
   }
 

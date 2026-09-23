@@ -12,7 +12,7 @@ const DEGRADED_PLANS = [
     priceFen: 500,
     quota: 10,
     description: "适合先体验一段聚焦式探索。",
-    highlight: "10 次对话额度"
+    highlight: "10 次有效调用"
   },
   {
     id: "standard",
@@ -20,7 +20,7 @@ const DEGRADED_PLANS = [
     priceFen: 1000,
     quota: 30,
     description: "适合稳定使用，覆盖连续整理与复盘。",
-    highlight: "30 次对话额度",
+    highlight: "30 次有效调用",
     recommended: true
   },
   {
@@ -29,7 +29,7 @@ const DEGRADED_PLANS = [
     priceFen: 2500,
     quota: 100,
     description: "适合高频深入使用，保留更充足的探索空间。",
-    highlight: "100 次对话额度"
+    highlight: "100 次有效调用"
   }
 ] as const;
 
@@ -55,9 +55,9 @@ export const billingV2Routes = async (app: FastifyInstance) => {
       const seedUser = isSeedUser(externalHeaders.userEmail);
       payload = createSuccess(externalHeaders.requestId, {
         plan: seedUser ? "seed-gift" : "starter",
-        monthlyTokenLimit: seedUser ? 100 : 10,
+        monthlyTokenLimit: seedUser ? 100 : 20,
         consumedTokens: 0,
-        remainingTokens: seedUser ? 100 : 10,
+        remainingTokens: seedUser ? 100 : 20,
         quotaState: "HEALTHY",
         billingStatus: seedUser ? "SEEDED" : "LOCAL_DEBUG",
         paymentChannel: "alipay",

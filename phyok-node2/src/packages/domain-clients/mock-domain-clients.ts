@@ -4,6 +4,7 @@ import type {
 } from "../graph-flows/self-explore/state";
 import type {
   AuditTracePhase,
+  BillingConsumeResult,
   BillingPrecheckResult,
   DomainClients,
   GatewayContext,
@@ -107,6 +108,17 @@ async function precheckBilling(): Promise<BillingPrecheckResult> {
   };
 }
 
+async function consumeBilling(): Promise<BillingConsumeResult> {
+  return {
+    accepted: true,
+    recorded: true,
+    consumed: true,
+    idempotent: false,
+    plan: "starter",
+    remainingTokens: 19
+  };
+}
+
 export function createMockDomainClients(): DomainClients {
   return {
     verifyToken,
@@ -116,6 +128,7 @@ export function createMockDomainClients(): DomainClients {
     upsertMemoryPlan: async (query) => upsertMemoryPlan(query),
     createMemoryFragment: async (input) => createMemoryFragment(input),
     emitAuditTrace,
-    precheckBilling: async () => precheckBilling()
+    precheckBilling: async () => precheckBilling(),
+    consumeBilling: async () => consumeBilling()
   };
 }
