@@ -1,18 +1,16 @@
 # 心理学空间·自我探索Agent Pro
 
-`心理学空间·自我探索Agent Pro` 是一个面向长期演进的 AI Agent 对话网站，围绕“心理学学习、自我探索、记忆沉淀与记忆修复”构建。当前仓库已经打通了 Web 对话端、Node BFF / Agent Runtime、Java 微服务、支付/审计与记忆图谱等核心链路，并支持本地 Docker 联调与单机 K3s 部署。整套工程化架构以抗熵增、便于 AI 代码 Review、保持长期可维护性为目标，希望把产品体验与工程质量都尽量打磨得稳一些、长久一些。项目由作者 `SimonWZB` 全栈开发并开源分享，欢迎指正、交流，也欢迎一起继续把它做得更好。
+`心理学空间·自我探索Agent Pro` 是一个面向长期演进的 AI Agent 对话网站，围绕“心理学学习、自我探索、记忆沉淀与记忆修复”构建。当前仓库已经打通了 Web 对话端、Node BFF / Agent Runtime、Java 微服务、支付/审计与记忆图谱等核心链路，并支持本地 Docker 联调与 K3s/K8s 部署。整套工程化架构以抗熵增、便于 AI 代码 Review、保持长期可维护性为目标，希望把产品体验与工程质量都尽量打磨得稳一些、长久一些。项目由作者 `SimonWZB` 全栈开发并开源分享，欢迎指正、交流，也欢迎一起继续把它做得更好。
 
 ## 1. 概述
 
 ### 核心功能
 
-- 自我探索对话：围绕心理学学习、自我探索、潜意识与原生家庭、困扰根因等意图进行多轮对话。
-- 多模态输入：支持文本、图片、语音、文件等输入，并在 Node2 层做统一预处理。
-- Agent 编排：以 Node2 中的自我探索流程为主线，完成意图识别、记忆门槛校验、记忆/知识召回、证据拼装、模型收口与 SSE 输出。
-- 流式交互：前端支持生产级 SSE 流式输出、thinking 展示、停止生成、断线恢复、历史会话恢复。
-- 记忆系统：Java `memory-service` 管理记忆碎片、探索门槛校验、召回结果与星图数据结构；前端已具备“记忆星图”可视化面板。
+- 记忆系统：`memory-service` 管理记忆碎片、探索门槛校验、召回结果与星图数据结构；前端已具备“记忆星图”可视化面板。
 - 用户与商业化：邮箱验证码登录、计费账户、套餐展示、支付宝下单、审计事件查询已经打通。
-- 工程化部署：支持本地单服务运行、Docker Compose 整套联调，以及单机 K3s 远程部署与运维脚本。
+- Agent 编排：以 node(BFF) 中的自我探索流程为主线，围绕心理学学习、自我探索、潜意识与原生家庭、困扰根因等意图进行多轮对话，并完成意图识别、记忆门槛校验、记忆/知识召回、证据拼装、模型收口与 SSE 输出。
+- 多模态输入：支持文本、图片、语音、文件等输入，并在 node(BFF) 层做统一预处理。
+- 工程化部署：支持本地单服务运行、Docker Compose 整套联调，以及 K3s/K8s 远程部署与运维脚本。
 
 ## 2. 架构
 
@@ -24,7 +22,7 @@
 - Node 层强调流式输出、Agent 编排、BFF 聚合与快速迭代。
 - Java 层强调领域建模、数据治理、工程化分层与长期稳定性。
 - RAG 作为系统核心能力之一，被显式拆成“记忆碎片存储、门槛校验、召回、星图可视化、后续向量检索扩展”几个可独立演进的模块。
-- 部署层选择 Compose + K3s，是为了兼顾本地联调效率、单机线上落地和后续扩容路径。
+- 部署层选择 Compose + K3s/K8s，是为了兼顾本地联调效率、线上落地和后续扩容路径。
 
 ### RAG 技术选型与理由
 
@@ -66,7 +64,7 @@
 
 #### RAG 核心链路
 
-- 用户输入到达 Node2 后，先完成意图识别与风险判断。
+- 用户输入到达 node(BFF) 后，先完成意图识别与风险判断。
 - 如果命中探索类意图，先向 `memory-service` 做门槛校验，例如是否已达到最小记忆碎片数。
 - 校验通过后，再执行记忆召回、知识召回和证据拼装。
 - 拼装后的证据包不会直接替代系统提示，而是作为 Agent 最终输出阶段的依据输入。
@@ -113,7 +111,7 @@
 
 #### 选择理由
 
-- Node2 作为统一 `/v2/*` 入口，更适合处理 SSE、流式输出、前端交互收口与多服务聚合。
+- node(BFF) 作为统一 `/v2/*` 入口，更适合处理 SSE、流式输出、前端交互收口与多服务聚合。
 - `Fastify` 在高并发 I/O、SSE、模块化路由上更适合聊天类场景。
 - `TypeScript + Zod` 强化接口契约和运行时校验，减少 BFF 层的隐性变更风险。
 - Node 层非常适合承接 Agent 编排，因为它天然贴近流式模型调用、多模态预处理和前端体验联动。
@@ -140,18 +138,18 @@
 #### 部署与运维
 
 - 本地整套联调：`Docker Compose`
-- 远程部署：`K3s + ingress-nginx + host Nginx`
+- 远程部署：`K3s/K8s + ingress-nginx + host Nginx`
 - 选择理由：
   - 本地用 Compose 便于快速拉起 Web、Node、Java、PostgreSQL、Redis、Kafka、Qdrant。
-  - 远程用单机 `K3s`，相比完整 Kubernetes 更轻，适合单机服务器与资源受限场景。
-  - 宿主机保留主 Nginx，统一处理 `80/443`、HTTPS 与域名入口，K3s 只承载应用工作负载。
+  - 远程侧统一兼容 `K3s/K8s`，既能覆盖轻量单机落地，也能兼容标准 Kubernetes 集群。
+  - 宿主机保留主 Nginx，统一处理 `80/443`、HTTPS 与域名入口，K3s/K8s 只承载应用工作负载。
 
 ### 后端架构图
 
 ```mermaid
 flowchart LR
     U[Browser / H5] --> W[chat-web\nNext.js 15 + React 19]
-    W -->|/v2/*| N[phyok-node2\nFastify BFF + SSE + Agent Runtime]
+    W -->|/v2/*| N[phyok-node2\nnode(BFF) + SSE + Agent Runtime]
     N --> G[Self Explore Flow\nLangGraph 风格编排]
     G --> AI[SiliconFlow / DeepSeek / 多模态模型]
 
@@ -175,7 +173,7 @@ flowchart LR
 
     subgraph Deploy
       C[Docker Compose]
-      K3[K3s + ingress-nginx]
+      K3[K3s/K8s + ingress-nginx]
       NG[Host Nginx + HTTPS]
     end
 
@@ -192,7 +190,7 @@ flowchart LR
 ### 当前服务分层
 
 - `chat-web`：用户直接访问的聊天前端，负责输入、SSE 展示、历史会话、计费弹层、记忆星图 UI。
-- `phyok-node2`：统一 API 入口、SSE 输出、Agent 流程编排、多模态预处理、Java 服务代理。
+- `phyok-node2`：统一 API 入口、SSE 输出、Agent 流程编排、多模态预处理、Java 服务代理，也就是这里文档中所说的 `node(BFF)`。
 - `phyok-java`：
   - `auth-service`：邮箱验证码登录与会话签发
   - `memory-service`：记忆碎片、门槛校验、召回、星图
@@ -200,7 +198,7 @@ flowchart LR
   - `payment-service`：支付宝下单与订单查询
   - `audit-service`：审计事件写入与查询
   - 其他：`tenant-service`、`privacy-service`、`knowledge-service`、`ops-admin-service`
-- `deploy`：Compose、K3s、Nginx 与运维脚本
+- `deploy`：Compose、K3s/K8s、Nginx 与运维脚本
 
 ## 3. 运行与部署
 
@@ -212,7 +210,7 @@ flowchart LR
 - npm 10+
 - Java 21
 - Docker / Docker Compose
-- 单机 K3s 部署时：Ubuntu 22.04 + 已开放 `80`、`443`、`6443`
+- K3s/K8s 部署时：Ubuntu 22.04 + 已开放 `80`、`443`、`6443`
 
 根目录统一环境文件约定：
 
@@ -225,7 +223,7 @@ cp env2.example env2
 - 根目录 `env2` 已被 `.gitignore` 忽略，不应提交到 Git。
 - `phyok-node2` 还支持 `env2.local`、`env2.prod` 等按环境覆盖的文件命名。
 
-### 本地运行：前端 + Node2 + 单服务
+### 本地运行：前端 + node(BFF) + 单服务
 
 #### 1. 启动 chat-web
 
@@ -239,7 +237,7 @@ npm run dev
 
 - `http://127.0.0.1:3001`
 
-#### 2. 启动 Node2
+#### 2. 启动 node(BFF)
 
 ```bash
 cd phyok-node2
@@ -268,7 +266,7 @@ cd phyok-java
 
 - 调试记忆碎片接口
 - 调试记忆星图后端图谱接口
-- 调整 `chat-web -> node2 -> memory-service` 的真实联调
+- 调整 `chat-web -> node(BFF) -> memory-service` 的真实联调
 
 ### 本地运行：Docker Compose 整套联调
 
@@ -289,7 +287,7 @@ docker compose -f docker-compose.prod.yml --env-file ../../env2 up --build
 默认入口：
 
 - Frontend: `http://127.0.0.1:3001`
-- Node2: `http://127.0.0.1:3002`
+- node(BFF): `http://127.0.0.1:3002`
 - Auth Service: `http://127.0.0.1:18081`
 - Billing Service: `http://127.0.0.1:18085`
 - Audit Service: `http://127.0.0.1:18087`
@@ -302,7 +300,7 @@ docker compose -f docker-compose.prod.yml --env-file ../../env2 up --build
 4. 查看计费与审计
 5. 切换到“记忆星图”查看图谱
 
-### 远程部署：单机 K3s
+### 远程部署：K3s/K8s
 
 #### 方案 A：宿主机已有 Nginx，推荐
 
@@ -321,7 +319,7 @@ PUBLIC_HOST=www.phyok.com ./deploy/scripts/k3s-all-in-one-host-nginx.sh
 
 #### 方案 C：拆步执行
 
-1. 安装 K3s
+1. 安装 K3s/K8s
 
 ```bash
 ./deploy/scripts/k3s-install.sh
@@ -374,7 +372,7 @@ PUBLIC_HOST=api.your-domain.com ./deploy/scripts/k3s-deploy.sh all
 ./deploy/scripts/cleanup.sh all
 ```
 
-#### K3s 运维
+#### K3s/K8s 运维
 
 查看运行状态：
 
@@ -426,15 +424,15 @@ cp env2.example env2
 
 - 基础端口与对外 URL
 - PostgreSQL / Redis / Kafka / Qdrant
-- Node2 / chat-web / 本地调试
+- node(BFF) / chat-web / 本地调试
 - Auth 邮件验证码
 - Billing / Payment
 - SiliconFlow / 大模型 / 多模态
-- K3s / 告警 / 运维辅助项
+- K3s/K8s / 告警 / 运维辅助项
 
 重点说明：
 
-- `SILICONFLOW_API_KEY` 为 Node2 实际调用模型的关键变量。
+- `SILICONFLOW_API_KEY` 为 node(BFF) 实际调用模型的关键变量。
 - `TENCENT_SES_*` 为邮箱验证码发送必填变量。
 - `ALIPAY_*` 为开启真实支付宝链路时必填变量。
 - 若暂时只做本地 UI 或前后端联调，可先保留为空或使用降级模式，但生产环境必须填写完整。
@@ -454,9 +452,9 @@ cp env2.example env2
 
 ### 本地与生产配置
 
-- `chat-web` 在开发态会通过 Next.js rewrite 把 `/v2/*` 转发到本地 Node2
-- `node2` 支持通过根目录 `env2`、`env2.local`、`env2.prod` 等方式做环境覆盖
-- K3s 发布时，`deploy/scripts/k8s-apply-env.sh` 会把根目录 `env2` 同步到 `phyok-platform-secret`
+- `chat-web` 在开发态会通过 Next.js rewrite 把 `/v2/*` 转发到本地 node(BFF)
+- `node(BFF)` 支持通过根目录 `env2`、`env2.local`、`env2.prod` 等方式做环境覆盖
+- K3s/K8s 发布时，`deploy/scripts/k8s-apply-env.sh` 会把根目录 `env2` 同步到 `phyok-platform-secret`
 
 ### 当前主链路
 
@@ -475,6 +473,6 @@ cp env2.example env2
 - 前端架构：`phyok-web/docs/architecture/FRONTEND_MONOREPO_ARCHITECTURE.md`
 - 聊天应用架构：`phyok-web/docs/architecture/CHAT_WEB_APP_ARCHITECTURE.md`
 - 流式状态架构：`phyok-web/docs/architecture/FRONTEND_STATE_STREAMING_ARCHITECTURE.md`
-- Node2 说明：`phyok-node2/README.md`
+- node(BFF) 说明：`phyok-node2/README.md`
 - Compose 说明：`deploy/compose/README.md`
-- 单机 K3s 说明：`deploy/k8s/SINGLE_NODE_K3S_GUIDE.md`
+- K3s/K8s 说明：`deploy/k8s/SINGLE_NODE_K3S_GUIDE.md`
