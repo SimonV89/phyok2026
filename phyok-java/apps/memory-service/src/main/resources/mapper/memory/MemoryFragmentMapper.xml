@@ -12,6 +12,14 @@
         <result property="timelineRoot" column="timeline_root"/>
         <result property="contentText" column="content_text"/>
         <result property="searchable" column="searchable"/>
+        <result property="fragmentType" column="fragment_type"/>
+        <result property="visibility" column="visibility"/>
+        <result property="timeBucket" column="time_bucket"/>
+        <result property="topicTags" column="topic_tags"/>
+        <result property="emotionTags" column="emotion_tags"/>
+        <result property="chunkSeq" column="chunk_seq"/>
+        <result property="chunkConfidence" column="chunk_confidence"/>
+        <result property="chunkStrategy" column="chunk_strategy"/>
         <result property="deleted" column="deleted"/>
         <result property="createdAt" column="created_at"/>
     </resultMap>
@@ -25,6 +33,14 @@
             timeline_root,
             content_text,
             searchable,
+            fragment_type,
+            visibility,
+            time_bucket,
+            topic_tags,
+            emotion_tags,
+            chunk_seq,
+            chunk_confidence,
+            chunk_strategy,
             deleted,
             created_at,
             updated_at
@@ -36,6 +52,14 @@
             #{timelineRoot},
             #{contentText},
             #{searchable},
+            #{fragmentType},
+            #{visibility},
+            #{timeBucket},
+            #{topicTags},
+            #{emotionTags},
+            #{chunkSeq},
+            #{chunkConfidence},
+            #{chunkStrategy},
             #{deleted},
             #{createdAt},
             #{createdAt}
@@ -50,6 +74,14 @@
                timeline_root,
                content_text,
                searchable,
+               fragment_type,
+               visibility,
+               time_bucket,
+               topic_tags,
+               emotion_tags,
+               chunk_seq,
+               chunk_confidence,
+               chunk_strategy,
                deleted,
                created_at
         from memory_fragment
@@ -66,6 +98,13 @@
         set timeline_root = #{timelineRoot},
             content_text = #{contentText},
             searchable = #{searchable},
+            fragment_type = #{fragmentType},
+            visibility = #{visibility},
+            time_bucket = #{timeBucket},
+            topic_tags = #{topicTags},
+            emotion_tags = #{emotionTags},
+            chunk_confidence = #{chunkConfidence},
+            chunk_strategy = #{chunkStrategy},
             updated_at = now()
         where tenant_id = #{tenantId}
           and app_id = #{appId}
@@ -127,6 +166,14 @@
                timeline_root,
                content_text,
                searchable,
+               fragment_type,
+               visibility,
+               time_bucket,
+               topic_tags,
+               emotion_tags,
+               chunk_seq,
+               chunk_confidence,
+               chunk_strategy,
                deleted,
                created_at
         from memory_fragment
@@ -147,6 +194,14 @@
                timeline_root,
                content_text,
                searchable,
+               fragment_type,
+               visibility,
+               time_bucket,
+               topic_tags,
+               emotion_tags,
+               chunk_seq,
+               chunk_confidence,
+               chunk_strategy,
                deleted,
                created_at
         from memory_fragment

@@ -381,9 +381,24 @@ button {
   padding-top: 6px;
 }
 
+.sidebar-bottom-meta {
+  margin-top: auto;
+  display: grid;
+  gap: 10px;
+}
+
 .sidebar-footer-login {
   width: 100%;
   justify-content: center;
+}
+
+.sidebar-filing {
+  display: grid;
+  gap: 2px;
+  padding: 2px 4px 0;
+  color: rgba(111, 98, 92, 0.72);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .sidebar-card-title {
@@ -777,7 +792,7 @@ button {
   align-self: flex-end;
   display: grid;
   justify-items: end;
-  gap: 8px;
+  gap: 6px;
   z-index: 6;
   margin-top: -8px;
   pointer-events: none;
@@ -788,27 +803,32 @@ button {
   pointer-events: auto;
   border: 1px solid rgba(105, 79, 63, 0.12);
   border-radius: 999px;
-  box-shadow: 0 14px 28px rgba(80, 42, 28, 0.1);
-  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 20px rgba(80, 42, 28, 0.08);
+  backdrop-filter: blur(10px);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    opacity 180ms ease;
 }
 
 .new-content-toast {
-  min-height: 34px;
-  padding: 0 14px;
-  background: rgba(255, 255, 255, 0.9);
-  color: rgba(92, 82, 77, 0.9);
-  font-size: 12px;
+  min-height: 32px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.84);
+  color: rgba(92, 82, 77, 0.86);
+  font-size: 11px;
   font-weight: 600;
   animation: unread-toast-float 2.8s ease-in-out infinite;
 }
 
 .scroll-to-bottom-button {
-  min-height: 38px;
-  padding: 0 16px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 243, 238, 0.94));
+  min-height: 36px;
+  padding: 0 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 243, 238, 0.92));
   color: var(--text);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .new-content-toast:hover,
@@ -1863,6 +1883,12 @@ button {
   line-height: 1.6;
 }
 
+.login-countdown {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .login-actions {
   display: flex;
   gap: 12px;
@@ -2012,11 +2038,8 @@ button {
 }
 
 .auth-dialog-modal {
-  width: min(100%, 1080px);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 18px;
-  align-items: stretch;
+  width: min(100%, 560px);
+  display: block;
 }
 
 .auth-dialog-sidepanel {
@@ -2905,6 +2928,15 @@ button {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.94) 28%);
     padding-top: 14px;
   }
+
+  .sidebar-bottom-meta {
+    gap: 8px;
+  }
+
+  .sidebar-filing {
+    padding-bottom: 4px;
+    font-size: 10px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -3005,7 +3037,6 @@ button {
     gap: 12px;
   }
 
-  .auth-dialog-sidepanel,
   .login-card {
     padding: 20px 18px;
   }

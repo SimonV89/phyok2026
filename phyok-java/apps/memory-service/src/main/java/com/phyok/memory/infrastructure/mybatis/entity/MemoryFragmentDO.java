@@ -10,6 +10,14 @@ public class MemoryFragmentDO {
     private String timelineRoot;
     private String contentText;
     private boolean searchable;
+    private String fragmentType;
+    private String visibility;
+    private String timeBucket;
+    private String topicTags;
+    private String emotionTags;
+    private Integer chunkSeq;
+    private Double chunkConfidence;
+    private String chunkStrategy;
     private boolean deleted;
     private OffsetDateTime createdAt;
 
@@ -67,6 +75,70 @@ public class MemoryFragmentDO {
 
     public void setSearchable(boolean searchable) {
         this.searchable = searchable;
+    }
+
+    public String getFragmentType() {
+        return fragmentType;
+    }
+
+    public void setFragmentType(String fragmentType) {
+        this.fragmentType = fragmentType;
+    }
+
+    public String getVisibility() {
+        return visibility;
+    }
+
+    public void setVisibility(String visibility) {
+        this.visibility = visibility;
+    }
+
+    public String getTimeBucket() {
+        return timeBucket;
+    }
+
+    public void setTimeBucket(String timeBucket) {
+        this.timeBucket = timeBucket;
+    }
+
+    public String getTopicTags() {
+        return topicTags;
+    }
+
+    public void setTopicTags(String topicTags) {
+        this.topicTags = topicTags;
+    }
+
+    public String getEmotionTags() {
+        return emotionTags;
+    }
+
+    public void setEmotionTags(String emotionTags) {
+        this.emotionTags = emotionTags;
+    }
+
+    public Integer getChunkSeq() {
+        return chunkSeq;
+    }
+
+    public void setChunkSeq(Integer chunkSeq) {
+        this.chunkSeq = chunkSeq;
+    }
+
+    public Double getChunkConfidence() {
+        return chunkConfidence;
+    }
+
+    public void setChunkConfidence(Double chunkConfidence) {
+        this.chunkConfidence = chunkConfidence;
+    }
+
+    public String getChunkStrategy() {
+        return chunkStrategy;
+    }
+
+    public void setChunkStrategy(String chunkStrategy) {
+        this.chunkStrategy = chunkStrategy;
     }
 
     public boolean isDeleted() {

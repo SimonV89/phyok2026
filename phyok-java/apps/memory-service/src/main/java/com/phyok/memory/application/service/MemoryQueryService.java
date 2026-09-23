@@ -216,6 +216,14 @@ public class MemoryQueryService {
                 fragment.getTimelineRoot(),
                 fragment.getContentText(),
                 fragment.isSearchable(),
+                defaultIfBlank(fragment.getFragmentType(), "EVENT"),
+                defaultIfBlank(fragment.getVisibility(), "PRIVATE"),
+                defaultIfBlank(fragment.getTimeBucket(), "today"),
+                splitTags(fragment.getTopicTags()),
+                splitTags(fragment.getEmotionTags()),
+                safeChunkSeq(fragment),
+                safeChunkConfidence(fragment),
+                defaultIfBlank(fragment.getChunkStrategy(), "LOCAL_FALLBACK"),
                 fragment.getCreatedAt()
         );
     }
@@ -233,8 +241,16 @@ public class MemoryQueryService {
     private List<String> buildTags(MemoryFragmentDO fragment) {
         List<String> tags = new ArrayList<>();
         tags.add(fragment.getTimelineRoot());
+        if (fragment.getFragmentType() != null && !fragment.getFragmentType().isBlank()) {
+            tags.add(fragment.getFragmentType());
+        }
         if (fragment.isSearchable()) {
             tags.add("SEARCHABLE");
+        }
+        tags.addAll(splitTags(fragment.getTopicTags()));
+        tags.addAll(splitTags(fragment.getEmotionTags()));
+        if (tags.size() > 8) {
+            return tags.subList(0, 8);
         }
         return tags;
     }
@@ -296,6 +312,33 @@ public class MemoryQueryService {
         }
         String normalized = timelineRoot.trim().toUpperCase(Locale.ROOT);
         return TIMELINE_ROOTS.contains(normalized) ? normalized : null;
+    }
+
+    private List<String> splitTags(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(value.split("\\|"))
+                .map(String::trim)
+                .filter(item -> !item.isBlank())
+                .distinct()
+                .limit(6)
+                .toList();
+    }
+
+    private int safeChunkSeq(MemoryFragmentDO fragment) {
+        return fragment.getChunkSeq() == null || fragment.getChunkSeq() < 1 ? 1 : fragment.getChunkSeq();
+    }
+
+    private double safeChunkConfidence(MemoryFragmentDO fragment) {
+        if (fragment.getChunkConfidence() == null) {
+            return 0.5d;
+        }
+        return Math.max(0.01d, Math.min(fragment.getChunkConfidence(), 0.99d));
+    }
+
+    private String defaultIfBlank(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 
     private record PeerCandidate(MemoryFragmentDO fragment, double score) {

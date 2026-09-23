@@ -92,7 +92,7 @@ const MODULES = [
   {
     id: "explore",
     title: "自我探索Agent Pro",
-    subtitle: "主对话工作区"
+    subtitle: "主对话区"
   },
   {
     id: "memory-map",
@@ -257,6 +257,9 @@ function buildSchoolIntentPrompt(school: (typeof PSYCHOLOGY_SCHOOLS)[number]): s
 function isNearBottom(element: HTMLDivElement): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight < 120;
 }
+
+const JUMP_BOTTOM_REVEAL_DISTANCE = 160;
+const JUMP_BOTTOM_HIDE_DISTANCE = 56;
 
 function mapBackendStatus(status: string) {
   if (status === "completed") {
@@ -567,6 +570,7 @@ export function ChatShell() {
   const exploreLaneRef = useRef<HTMLDivElement | null>(null);
   const animationPausedRef = useRef(false);
   const manualScrollIntentRef = useRef(false);
+  const userDetachedScrollRef = useRef(false);
   const autoScrollReleaseTimerRef = useRef<number | null>(null);
   const autoScrollingRef = useRef(false);
   const drawerAutoCloseTimerRef = useRef<number | null>(null);
@@ -710,7 +714,7 @@ export function ChatShell() {
         setPaymentFeedback(null);
         const order = await createAlipayOrder(planId);
         setLastPaymentOrder(order);
-        setPaymentFeedback("支付宝订单已生成，可继续打开支付页或扫码支付。");
+        setPaymentFeedback("支付宝订单已创建，可继续支付或查看二维码。");
         if (typeof window !== "undefined") {
           window.open(order.payUrl, "_blank", "noopener,noreferrer");
         }
@@ -769,15 +773,21 @@ export function ChatShell() {
 
   const syncBottomAffordance = useCallback((element: HTMLDivElement) => {
     const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
-    const farFromBottom = distance > 240;
-    setShowJumpBottom(farFromBottom);
-    if (!farFromBottom) {
+    const shouldShowJumpBottom = userDetachedScrollRef.current
+      ? distance > JUMP_BOTTOM_REVEAL_DISTANCE
+      : distance > 240;
+    const shouldHideUnread = distance < JUMP_BOTTOM_HIDE_DISTANCE;
+
+    setShowJumpBottom(shouldShowJumpBottom);
+    if (shouldHideUnread) {
       setHasUnreadBelow(false);
+      setUnreadUpdateCount(0);
     }
   }, []);
 
   const pauseFollowLatest = useCallback(() => {
     manualScrollIntentRef.current = true;
+    userDetachedScrollRef.current = true;
     autoScrollingRef.current = false;
     setFollowLatest(false);
     if (autoScrollReleaseTimerRef.current) {
@@ -793,6 +803,7 @@ export function ChatShell() {
     }
 
     autoScrollingRef.current = true;
+    userDetachedScrollRef.current = false;
     setFollowLatest(true);
     setHasUnreadBelow(false);
     setShowJumpBottom(false);
@@ -2011,13 +2022,19 @@ export function ChatShell() {
             </div>
           ) : null}
 
-          {isPortraitMobile ? (
-            <div className="sidebar-mobile-footer">
-              <button type="button" className="toolbar-login sidebar-footer-login" onClick={openAuthDialog}>
-                {authSession ? `已登录 · ${authSession.email}` : "邮箱登录"}
-              </button>
+          <div className="sidebar-bottom-meta">
+            {isPortraitMobile ? (
+              <div className="sidebar-mobile-footer">
+                <button type="button" className="toolbar-login sidebar-footer-login" onClick={openAuthDialog}>
+                  {authSession ? `已登录 · ${authSession.email}` : "邮箱登录"}
+                </button>
+              </div>
+            ) : null}
+            <div className="sidebar-filing">
+              <span>吉ICP备17004852号-2</span>
+              <span>SimonWZB 2026</span>
             </div>
-          ) : null}
+          </div>
         </aside>
 
         <section className="chat-stage">
@@ -2138,7 +2155,7 @@ export function ChatShell() {
               <div className="profile-stage-header">
                 <div>
                   <div className="history-stage-kicker">我的</div>
-                  <h2>管理你的账号、额度与支付</h2>
+                  <h2>管理你的账号、可用额度与支付</h2>
                 </div>
                 {authSession ? (
                   <button type="button" className="toolbar-login" onClick={handleLogout}>
@@ -2157,21 +2174,21 @@ export function ChatShell() {
                   {authSession ? (
                     <>
                       <h3>{authSession.email}</h3>
-                      <p>当前账号已连接，可继续查看额度、管理支付与继续对话。</p>
+                      <p>你已登录，可以继续对话、查看额度并完成支付。</p>
                     </>
                   ) : (
                     <>
                       <h3>还未登录</h3>
-                      <p>登录后即可查看额度状态，并通过支付宝完成购买。</p>
+                      <p>登录后即可查看额度，并通过支付宝完成购买。</p>
                       <button type="button" className="send-button profile-primary-button" onClick={openAuthDialog}>
-                        打开登录弹窗
+                        立即登录
                       </button>
                     </>
                   )}
                 </article>
 
                 <article className="profile-card">
-                  <div className="sidebar-card-kicker">额度状态</div>
+                  <div className="sidebar-card-kicker">可用额度</div>
                   {billingSummary ? (
                     <>
                       <h3>{billingSummary.remainingTokens.toLocaleString("zh-CN")}</h3>
@@ -2179,14 +2196,14 @@ export function ChatShell() {
                         {billingSummary.plan} · {billingSummary.quotaState} · {billingSummary.paymentChannel}
                       </p>
                       <div className="profile-account-meta">
-                        <span>推荐套餐 · {billingSummary.recommendedPlanId ?? "standard"}</span>
+                        <span>适合你的方案 · {billingSummary.recommendedPlanId ?? "standard"}</span>
                         <span>支付方式 · {billingSummary.paymentChannel}</span>
                       </div>
                     </>
                   ) : (
                     <>
-                      <h3>登录后可见</h3>
-                      <p>登录后可查看当前额度状态，并按三档套餐通过支付宝购买。</p>
+                      <h3>登录后查看</h3>
+                      <p>登录后可查看当前额度，并通过支付宝完成购买。</p>
                     </>
                   )}
                 </article>
@@ -2202,10 +2219,10 @@ export function ChatShell() {
                   </div>
                   <div className="profile-order-actions">
                     <a href={lastPaymentOrder.payUrl} target="_blank" rel="noreferrer" className="toolbar-login">
-                      打开支付页
+                      前往支付
                     </a>
                     <a href={lastPaymentOrder.qrCodeUrl} target="_blank" rel="noreferrer" className="toolbar-login">
-                      打开扫码页
+                      查看二维码
                     </a>
                   </div>
                 </div>
@@ -2214,8 +2231,8 @@ export function ChatShell() {
               <div className="profile-plan-section">
                 <div className="profile-plan-header">
                   <div>
-                    <div className="sidebar-card-kicker">三档套餐</div>
-                    <h3>选择适合你的额度方案</h3>
+                    <div className="sidebar-card-kicker">可选方案</div>
+                    <h3>选择更适合你的使用方式</h3>
                   </div>
                 </div>
                 {billingPlansError ? <div className="history-stage-banner error">{billingPlansError}</div> : null}
@@ -2235,7 +2252,7 @@ export function ChatShell() {
                             <strong>{plan.name}</strong>
                             <span>{(plan.priceFen / 100).toFixed(2)} 元</span>
                           </div>
-                          <div className="profile-plan-quota">{plan.quota} 次额度</div>
+                          <div className="profile-plan-quota">{plan.quota} 次使用额度</div>
                           <p>{plan.description}</p>
                           {plan.highlight ? <div className="profile-plan-highlight">{plan.highlight}</div> : null}
                           <button
@@ -2262,12 +2279,6 @@ export function ChatShell() {
               onTouchMove={() => {
                 pauseFollowLatest();
               }}
-              onMouseDown={() => {
-                pauseFollowLatest();
-              }}
-              onPointerDown={() => {
-                pauseFollowLatest();
-              }}
               onScroll={(event) => {
                 const container = event.currentTarget;
                 const nearBottom = isNearBottom(container);
@@ -2276,9 +2287,13 @@ export function ChatShell() {
                   return;
                 }
 
-                setFollowLatest(nearBottom);
+                if (manualScrollIntentRef.current || userDetachedScrollRef.current) {
+                  setFollowLatest(false);
+                } else {
+                  setFollowLatest(nearBottom);
+                }
                 manualScrollIntentRef.current = false;
-                if (nearBottom) {
+                if (nearBottom && !userDetachedScrollRef.current) {
                   autoScrollingRef.current = false;
                   setUnreadUpdateCount(0);
                 }

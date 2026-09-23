@@ -10,23 +10,28 @@ import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class MemoryCommandService {
     private static final Set<String> TIMELINE_ROOTS = Set.of("EARLY", "CHILDHOOD", "STUDENT", "WORK", "TODAY");
     private final MemoryFragmentRepository memoryFragmentRepository;
     private final MemoryAuditClient memoryAuditClient;
+    private final SemanticChunkService semanticChunkService;
 
     public MemoryCommandService(
             MemoryFragmentRepository memoryFragmentRepository,
-            MemoryAuditClient memoryAuditClient
+            MemoryAuditClient memoryAuditClient,
+            SemanticChunkService semanticChunkService
     ) {
         this.memoryFragmentRepository = memoryFragmentRepository;
         this.memoryAuditClient = memoryAuditClient;
+        this.semanticChunkService = semanticChunkService;
     }
 
     public MemoryFragmentView createFragment(
@@ -39,23 +44,43 @@ public class MemoryCommandService {
             Boolean searchable
     ) {
         OffsetDateTime now = OffsetDateTime.now();
-        MemoryFragmentDO memoryFragment = new MemoryFragmentDO();
-        memoryFragment.setId(generateId());
-        memoryFragment.setTenantId(defaultIfBlank(tenantId, "tenant-demo"));
-        memoryFragment.setAppId(defaultIfBlank(appId, "app-self-explore"));
-        memoryFragment.setUserId(defaultIfBlank(userId, "user-demo"));
-        memoryFragment.setTimelineRoot(normalizeTimelineRoot(timelineRoot));
-        memoryFragment.setContentText(normalizeContentText(contentText));
-        memoryFragment.setSearchable(searchable == null || searchable);
-        memoryFragment.setDeleted(false);
-        memoryFragment.setCreatedAt(now);
-        memoryFragmentRepository.save(memoryFragment);
-        publishAuditEvent(requestId, "MEMORY_CREATED", memoryFragment, Map.of(
-                "action", "create",
-                "timelineRoot", memoryFragment.getTimelineRoot(),
-                "searchable", memoryFragment.isSearchable()
-        ));
-        return toView(memoryFragment);
+        String safeTenantId = defaultIfBlank(tenantId, "tenant-demo");
+        String safeAppId = defaultIfBlank(appId, "app-self-explore");
+        String safeUserId = defaultIfBlank(userId, "user-demo");
+        String normalizedContent = normalizeContentText(contentText);
+        boolean searchableValue = searchable == null || searchable;
+
+        List<SemanticChunkService.ChunkCandidate> chunks = semanticChunkService.chunkForCreate(
+                normalizedContent,
+                normalizeTimelineRoot(timelineRoot)
+        );
+
+        MemoryFragmentDO primaryFragment = null;
+        for (SemanticChunkService.ChunkCandidate chunk : chunks) {
+            MemoryFragmentDO memoryFragment = new MemoryFragmentDO();
+            memoryFragment.setId(generateId());
+            memoryFragment.setTenantId(safeTenantId);
+            memoryFragment.setAppId(safeAppId);
+            memoryFragment.setUserId(safeUserId);
+            memoryFragment.setContentText(chunk.content());
+            memoryFragment.setSearchable(searchableValue);
+            memoryFragment.setDeleted(false);
+            memoryFragment.setCreatedAt(now);
+            applyChunkMetadata(memoryFragment, chunk);
+            memoryFragmentRepository.save(memoryFragment);
+            publishAuditEvent(requestId, "MEMORY_CREATED", memoryFragment, Map.of(
+                    "action", "create",
+                    "timelineRoot", memoryFragment.getTimelineRoot(),
+                    "searchable", memoryFragment.isSearchable(),
+                    "chunkSeq", safeChunkSeq(memoryFragment),
+                    "chunkStrategy", defaultIfBlank(memoryFragment.getChunkStrategy(), "LOCAL_FALLBACK"),
+                    "fragmentType", defaultIfBlank(memoryFragment.getFragmentType(), "EVENT")
+            ));
+            if (primaryFragment == null) {
+                primaryFragment = memoryFragment;
+            }
+        }
+        return toView(primaryFragment);
     }
 
     public MemoryFragmentView updateFragment(
@@ -85,11 +110,19 @@ public class MemoryCommandService {
         if (searchable != null) {
             memoryFragment.setSearchable(searchable);
         }
+        applyChunkMetadata(memoryFragment, semanticChunkService.buildSingleChunkMetadata(
+                memoryFragment.getContentText(),
+                memoryFragment.getTimelineRoot(),
+                "MANUAL_UPDATE"
+        ));
         memoryFragmentRepository.update(memoryFragment);
         publishAuditEvent(requestId, "MEMORY_UPDATED", memoryFragment, Map.of(
                 "action", "update",
                 "timelineRoot", memoryFragment.getTimelineRoot(),
-                "searchable", memoryFragment.isSearchable()
+                "searchable", memoryFragment.isSearchable(),
+                "chunkSeq", safeChunkSeq(memoryFragment),
+                "chunkStrategy", defaultIfBlank(memoryFragment.getChunkStrategy(), "MANUAL_UPDATE"),
+                "fragmentType", defaultIfBlank(memoryFragment.getFragmentType(), "EVENT")
         ));
         return toView(memoryFragment);
     }
@@ -143,6 +176,14 @@ public class MemoryCommandService {
                 memoryFragment.getTimelineRoot(),
                 memoryFragment.getContentText(),
                 memoryFragment.isSearchable(),
+                defaultIfBlank(memoryFragment.getFragmentType(), "EVENT"),
+                defaultIfBlank(memoryFragment.getVisibility(), "PRIVATE"),
+                defaultIfBlank(memoryFragment.getTimeBucket(), "today"),
+                splitTags(memoryFragment.getTopicTags()),
+                splitTags(memoryFragment.getEmotionTags()),
+                safeChunkSeq(memoryFragment),
+                safeChunkConfidence(memoryFragment),
+                defaultIfBlank(memoryFragment.getChunkStrategy(), "LOCAL_FALLBACK"),
                 memoryFragment.getCreatedAt()
         );
     }
@@ -189,5 +230,54 @@ public class MemoryCommandService {
     private String buildContentPreview(String contentText) {
         String normalized = normalizeContentText(contentText).replace('\n', ' ');
         return normalized.length() <= 48 ? normalized : normalized.substring(0, 48) + "...";
+    }
+
+    private void applyChunkMetadata(MemoryFragmentDO memoryFragment, SemanticChunkService.ChunkCandidate chunk) {
+        memoryFragment.setTimelineRoot(normalizeTimelineRoot(chunk.timelineRoot()));
+        memoryFragment.setFragmentType(defaultIfBlank(chunk.fragmentType(), "EVENT"));
+        memoryFragment.setVisibility(defaultIfBlank(chunk.visibility(), "PRIVATE"));
+        memoryFragment.setTimeBucket(defaultIfBlank(chunk.timeBucket(), "today"));
+        memoryFragment.setTopicTags(joinTags(chunk.topicTags()));
+        memoryFragment.setEmotionTags(joinTags(chunk.emotionTags()));
+        memoryFragment.setChunkSeq(chunk.seq());
+        memoryFragment.setChunkConfidence(chunk.chunkConfidence());
+        memoryFragment.setChunkStrategy(defaultIfBlank(chunk.chunkStrategy(), "LOCAL_FALLBACK"));
+    }
+
+    private String joinTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return "";
+        }
+        return tags.stream()
+                .map(String::trim)
+                .filter(item -> !item.isBlank())
+                .distinct()
+                .limit(6)
+                .collect(Collectors.joining("|"));
+    }
+
+    private List<String> splitTags(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(value.split("\\|"))
+                .map(String::trim)
+                .filter(item -> !item.isBlank())
+                .distinct()
+                .limit(6)
+                .toList();
+    }
+
+    private int safeChunkSeq(MemoryFragmentDO memoryFragment) {
+        return memoryFragment.getChunkSeq() == null || memoryFragment.getChunkSeq() < 1
+                ? 1
+                : memoryFragment.getChunkSeq();
+    }
+
+    private double safeChunkConfidence(MemoryFragmentDO memoryFragment) {
+        if (memoryFragment.getChunkConfidence() == null) {
+            return 0.5d;
+        }
+        return Math.max(0.01d, Math.min(memoryFragment.getChunkConfidence(), 0.99d));
     }
 }

@@ -25,5 +25,15 @@ phyok:
     qdrant-collection: ${QDRANT_COLLECTION:memory_chunks}
     audit-enabled: ${MEMORY_AUDIT_ENABLED:true}
     audit-base-url: "${AUDIT_INTERNAL_BASE_URL:http://audit-service:18087}"
+    semantic-chunk-enabled: ${MEMORY_SEMANTIC_CHUNK_ENABLED:true}
+    semantic-chunk-provider: ${MEMORY_SEMANTIC_CHUNK_PROVIDER:siliconflow}
+    semantic-chunk-base-url: "${SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}"
+    semantic-chunk-api-key: ${SILICONFLOW_API_KEY:}
+    semantic-chunk-model: ${SILICONFLOW_INGEST_MODEL:${SILICONFLOW_CHAT_MODEL:Pro/deepseek-ai/DeepSeek-V4}}
+    semantic-chunk-timeout-ms: ${MEMORY_SEMANTIC_CHUNK_TIMEOUT_MS:30000}
+    semantic-chunk-max-chunks: ${MEMORY_SEMANTIC_MAX_CHUNKS:6}
+    semantic-chunk-min-chars: ${MEMORY_SEMANTIC_MIN_CHARS:80}
+    semantic-chunk-max-chars: ${MEMORY_SEMANTIC_MAX_CHARS:280}
+    semantic-chunk-llm-threshold-chars: ${MEMORY_SEMANTIC_LLM_THRESHOLD_CHARS:120}
 server:
   port: ${MEMORY_PORT:18083}
