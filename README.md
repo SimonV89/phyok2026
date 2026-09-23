@@ -6,7 +6,7 @@
 
 ### 核心功能
 
-- 记忆系统：`memory-service` 管理记忆碎片、探索门槛校验、召回结果与星图数据结构；前端已具备“记忆星图”可视化面板。
+- 记忆系统：通过RAG管理记忆碎片、探索门槛校验、召回结果与星图数据结构；前端已具备“记忆星图”可视化面板。
 - 用户与商业化：邮箱验证码登录、计费账户、套餐展示、支付宝下单、审计事件查询已经打通。
 - Agent 编排：以 node(BFF) 中的自我探索流程为主线，围绕心理学学习、自我探索、潜意识与原生家庭、困扰根因等意图进行多轮对话，并完成意图识别、记忆门槛校验、记忆/知识召回、证据拼装、模型收口与 SSE 输出。
 - 多模态输入：支持文本、图片、语音、文件等输入，并在 node(BFF) 层做统一预处理。
@@ -143,49 +143,6 @@
   - 本地用 Compose 便于快速拉起 Web、Node、Java、PostgreSQL、Redis、Kafka、Qdrant。
   - 远程侧统一兼容 `K3s/K8s`，既能覆盖轻量单机落地，也能兼容标准 Kubernetes 集群。
   - 宿主机保留主 Nginx，统一处理 `80/443`、HTTPS 与域名入口，K3s/K8s 只承载应用工作负载。
-
-### 后端架构图
-
-```mermaid
-flowchart LR
-    U[Browser / H5] --> W[chat-web\nNext.js 15 + React 19]
-    W -->|/v2/*| N[phyok-node2\nnode(BFF) + SSE + Agent Runtime]
-    N --> G[Self Explore Flow\nLangGraph 风格编排]
-    G --> AI[SiliconFlow / DeepSeek / 多模态模型]
-
-    N --> A[auth-service]
-    N --> B[billing-service]
-    N --> P[payment-service]
-    N --> M[memory-service]
-    N --> AU[audit-service]
-    N --> T[tenant-service / privacy-service / knowledge-service]
-
-    A --> PG[(PostgreSQL)]
-    B --> PG
-    P --> PG
-    M --> PG
-    AU --> PG
-    T --> PG
-
-    M --> Q[(Qdrant)]
-    N --> R[(Redis)]
-    N --> K[(Kafka)]
-
-    subgraph Deploy
-      C[Docker Compose]
-      K3[K3s/K8s + ingress-nginx]
-      NG[Host Nginx + HTTPS]
-    end
-
-    NG --> K3
-    K3 --> W
-    K3 --> N
-    K3 --> A
-    K3 --> B
-    K3 --> P
-    K3 --> M
-    K3 --> AU
-```
 
 ### 当前服务分层
 
