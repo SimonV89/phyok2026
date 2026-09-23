@@ -39,3 +39,35 @@ create index if not exists idx_user_session_user_id
 
 create index if not exists idx_user_session_expired_at
     on user_session (expired_at);
+
+insert into user_account (
+    id, tenant_id, app_id, email, display_name, status, register_source, deleted, version, created_at, updated_at
+) values (
+    'user-demo',
+    'tenant-demo',
+    'app-self-explore',
+    'demo@phyok.com',
+    'Demo User',
+    'ACTIVE',
+    'EMAIL',
+    false,
+    0,
+    now(),
+    now()
+) on conflict (id) do nothing;
+
+insert into user_session (
+    id, tenant_id, app_id, user_id, session_token_hash, refresh_token_hash, device_id, client_version, expired_at, revoked, created_at
+) values (
+    'sess-demo',
+    'tenant-demo',
+    'app-self-explore',
+    'user-demo',
+    'demo-token',
+    'demo-refresh-token',
+    'device-demo',
+    'web-0.1.0',
+    now() + interval '30 day',
+    false,
+    now()
+) on conflict (id) do nothing;
