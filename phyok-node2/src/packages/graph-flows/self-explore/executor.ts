@@ -815,7 +815,20 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
       state.needsConfirmation = state.memoryAction === "delete" || state.memoryAction === "merge";
       return;
     }
-    if (containsAny(state.normalizedInput.plainText, ["记住", "沉淀", "记忆碎片", "帮我记下"])) {
+    if (
+      containsAny(state.normalizedInput.plainText, [
+        "记住",
+        "沉淀",
+        "记忆碎片",
+        "帮我记下",
+        "梦到",
+        "做梦",
+        "想起",
+        "回想起",
+        "突然想起",
+        "总会想起"
+      ])
+    ) {
       state.primaryIntent = "memory_create";
       return;
     }
@@ -854,6 +867,18 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
         state.normalizedInput.plainText,
         activeContext
       );
+    });
+    await emitTool("memory-retrieve", "召回相关记忆", async () => {
+      state.evidencePack.memory = await domainClients.recallMemory(state.normalizedInput.plainText, activeContext);
+      for (const item of state.evidencePack.memory) {
+        input.emit("citation.appended", {
+          runId: state.runId,
+          source: "memory_fragments",
+          title: item.title,
+          content: item.content,
+          score: item.score
+        });
+      }
     });
   } else if (state.primaryIntent === "memory_repair") {
     state.memoryWritePlan = {

@@ -413,7 +413,28 @@ public class MemoryQueryService {
                 intersection += 1;
             }
         }
-        return (double) intersection / (double) Math.max(leftTokens.size(), rightTokens.size());
+        double tokenOverlap = (double) intersection / (double) Math.max(leftTokens.size(), rightTokens.size());
+        double containmentBoost = computeContainmentBoost(normalizedLeft, normalizedRight);
+        return Math.max(tokenOverlap, containmentBoost);
+    }
+
+    private double computeContainmentBoost(String left, String right) {
+        int bestLength = 0;
+        for (int start = 0; start < left.length(); start += 1) {
+            for (int end = start + 2; end <= left.length(); end += 1) {
+                String piece = left.substring(start, end);
+                if (piece.length() <= bestLength) {
+                    continue;
+                }
+                if (right.contains(piece)) {
+                    bestLength = piece.length();
+                }
+            }
+        }
+        if (bestLength <= 0) {
+            return 0d;
+        }
+        return Math.min(0.92d, 0.18d + ((double) bestLength / (double) Math.max(left.length(), right.length())));
     }
 
     private Set<String> toTokenSet(String normalized) {

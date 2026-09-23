@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { env } from "../../config/env";
 import { createSuccess, extractExternalHeaders } from "../../packages/contracts/api";
+import { getDomainClients } from "../../packages/domain-clients";
 import { proxyJavaJson } from "../../packages/domain-clients/java-service-proxy";
 import { getConversationSummaryPage } from "../chat-v2/runtime";
 
@@ -181,24 +182,51 @@ function buildLocalDebugStarMap(limit: number, timelineRoot?: (typeof TIMELINE_O
 export const memoryV2Routes = async (app: FastifyInstance) => {
   app.get("/star-map", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const domainClients = getDomainClients();
     const parsed = starMapQuerySchema.safeParse(request.query);
     const timelineRoot = normalizeTimelineRoot(parsed.success ? parsed.data.timelineRoot : undefined);
     const limit = parsed.success ? (parsed.data.limit ?? 180) : 180;
     const allowDegraded = env.localDebugAllowDegraded || process.env.NODE_ENV !== "production";
+    let resolvedUserId = parsed.success ? (parsed.data.userId || externalHeaders.userId) : externalHeaders.userId;
+    let resolvedAppId = parsed.success ? (parsed.data.appId || externalHeaders.appId) : externalHeaders.appId;
+
+    if (externalHeaders.authorization?.trim()) {
+      try {
+        const identity = await domainClients.verifyToken({
+          authorization: externalHeaders.authorization,
+          requestId: externalHeaders.requestId,
+          traceId: externalHeaders.traceId,
+          appId: externalHeaders.appId,
+          userId: externalHeaders.userId || "guest_anonymous",
+          sessionId: externalHeaders.sessionId || "session_unknown"
+        });
+        resolvedUserId = identity.userId || resolvedUserId;
+        resolvedAppId = identity.appId || resolvedAppId;
+      } catch {
+        // Fall back to header/query values so the route remains readable in degraded environments.
+      }
+    }
 
     let payload;
     try {
+      const query: Record<string, string> = {
+        limit: String(limit)
+      };
+      if (timelineRoot) {
+        query.timelineRoot = timelineRoot;
+      }
+      if (resolvedUserId) {
+        query.userId = resolvedUserId;
+      }
+      if (resolvedAppId) {
+        query.appId = resolvedAppId;
+      }
       payload = await proxyJavaJson<Record<string, unknown>>({
         baseUrl: env.javaDomainBaseUrl,
         path: "/v2/memories/star-map",
         method: "GET",
         headers: externalHeaders,
-        query: {
-          timelineRoot,
-          limit: String(limit),
-          userId: parsed.success ? (parsed.data.userId || externalHeaders.userId) : externalHeaders.userId,
-          appId: parsed.success ? (parsed.data.appId || externalHeaders.appId) : externalHeaders.appId
-        }
+        query
       });
       if (allowDegraded && payload.code !== "OK") {
         payload = createSuccess(externalHeaders.requestId, buildLocalDebugStarMap(limit, timelineRoot));
