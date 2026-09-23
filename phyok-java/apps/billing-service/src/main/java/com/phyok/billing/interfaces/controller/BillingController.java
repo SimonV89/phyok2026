@@ -32,7 +32,7 @@ public class BillingController {
             @RequestHeader(value = "X-Request-Id", required = false) String requestId,
             @RequestHeader(value = "X-User-Email", required = false) String userEmail
     ) {
-        Map<String, Object> account = buildAccountPayload(userEmail);
+        Map<String, Object> account = billingAccountService.buildAccountPayload(userEmail);
         return ApiResponse.ok(requestIdOrDefault(requestId), Map.of(
                 "plan", account.get("plan"),
                 "monthlyTokenLimit", account.get("monthlyTokenLimit"),
