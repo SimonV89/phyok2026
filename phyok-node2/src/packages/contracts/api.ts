@@ -22,6 +22,8 @@ export type ExternalRequestHeaders = {
   appId: string;
   clientVersion?: string;
   deviceId?: string;
+  userId?: string;
+  sessionId?: string;
   userEmail?: string;
   idempotencyKey?: string;
 };
@@ -46,6 +48,8 @@ export const EXTERNAL_HEADER_NAMES = {
   appId: "x-app-id",
   clientVersion: "x-client-version",
   deviceId: "x-device-id",
+  userId: "x-user-id",
+  sessionId: "x-session-id",
   userEmail: "x-user-email",
   idempotencyKey: "idempotency-key"
 } as const;
@@ -78,6 +82,8 @@ export function extractExternalHeaders(headers: IncomingHttpHeaders): ExternalRe
     appId: pickHeaderValue(headers, EXTERNAL_HEADER_NAMES.appId) || "phyok-chat-web",
     clientVersion: pickHeaderValue(headers, EXTERNAL_HEADER_NAMES.clientVersion),
     deviceId: pickHeaderValue(headers, EXTERNAL_HEADER_NAMES.deviceId),
+    userId: pickHeaderValue(headers, EXTERNAL_HEADER_NAMES.userId),
+    sessionId: pickHeaderValue(headers, EXTERNAL_HEADER_NAMES.sessionId),
     userEmail: pickHeaderValue(headers, EXTERNAL_HEADER_NAMES.userEmail),
     idempotencyKey: pickHeaderValue(headers, EXTERNAL_HEADER_NAMES.idempotencyKey)
   };

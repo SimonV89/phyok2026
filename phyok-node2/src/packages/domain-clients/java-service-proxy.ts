@@ -34,6 +34,8 @@ export async function proxyJavaJson<T>(options: {
       "X-App-Id": options.headers.appId,
       ...(options.headers.clientVersion ? { "X-Client-Version": options.headers.clientVersion } : {}),
       ...(options.headers.deviceId ? { "X-Device-Id": options.headers.deviceId } : {}),
+      ...(options.headers.userId ? { "X-User-Id": options.headers.userId } : {}),
+      ...(options.headers.sessionId ? { "X-Session-Id": options.headers.sessionId } : {}),
       ...(options.headers.userEmail ? { "X-User-Email": options.headers.userEmail } : {}),
       ...(options.headers.authorization ? { Authorization: options.headers.authorization } : {}),
       ...(options.headers.idempotencyKey ? { "Idempotency-Key": options.headers.idempotencyKey } : {})

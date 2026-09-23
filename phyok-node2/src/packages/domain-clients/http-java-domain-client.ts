@@ -63,7 +63,10 @@ export class HttpJavaDomainClient implements DomainClients {
       method: "GET",
       path: "/v2/memories/gate-check",
       query: {
-        q: query
+        q: query,
+        tenantId: ctx.tenantId || "tenant-demo",
+        appId: ctx.appId,
+        userId: ctx.userId
       }
     });
   }
@@ -72,10 +75,15 @@ export class HttpJavaDomainClient implements DomainClients {
     const data = await this.request<{ items: MemoryFragment[] } | MemoryFragment[]>(ctx, {
       method: "POST",
       path: "/internal/memory/retrieve",
+      query: {
+        tenantId: ctx.tenantId || "tenant-demo",
+        appId: ctx.appId,
+        userId: ctx.userId
+      },
       body: {
         query,
         topK: 6,
-        minScore: 0.72,
+        minScore: 0.16,
         timelineRoots: [],
         topicTags: []
       }

@@ -196,8 +196,8 @@ export const memoryV2Routes = async (app: FastifyInstance) => {
         query: {
           timelineRoot,
           limit: String(limit),
-          userId: parsed.success ? parsed.data.userId : undefined,
-          appId: parsed.success ? parsed.data.appId : undefined
+          userId: parsed.success ? (parsed.data.userId || externalHeaders.userId) : externalHeaders.userId,
+          appId: parsed.success ? (parsed.data.appId || externalHeaders.appId) : externalHeaders.appId
         }
       });
       if (allowDegraded && payload.code !== "OK") {
