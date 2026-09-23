@@ -42,7 +42,7 @@ export type ChatStreamEvent =
       data: { seq: number; runId: string; inputChars: number; outputChars: number; attachmentCount: number };
     }
   | { event: "risk.alerted"; data: { seq: number; runId: string } & RiskAlert }
-  | { event: "warning.raised" | "stream.failed"; data: { seq: number; runId: string; message: string } }
+  | { event: "warning.raised" | "stream.failed"; data: { seq: number; runId: string; message: string; code?: string } }
   | {
       event: "message.completed";
       data: { seq: number; runId: string; message: string; thinking: string; actions: InteractionAction[] };

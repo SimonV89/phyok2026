@@ -117,6 +117,18 @@ function isRunStatus(value: unknown): value is ChatV2RunStatus {
   return value === "queued" || value === "running" || value === "completed" || value === "failed" || value === "stopped";
 }
 
+function extractErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+  const separatorIndex = error.message.indexOf(":");
+  if (separatorIndex <= 0) {
+    return undefined;
+  }
+  const code = error.message.slice(0, separatorIndex).trim();
+  return code.length > 0 ? code : undefined;
+}
+
 function toPersistedRun(run: ChatRunState): PersistedChatRunState {
   return {
     runId: run.runId,
@@ -375,6 +387,7 @@ async function runPipeline(run: ChatRunState): Promise<void> {
     });
   } catch (error) {
     const aborted = error instanceof Error && error.message === "aborted";
+    const explicitCode = extractErrorCode(error);
     run.status = aborted ? "stopped" : "failed";
     run.errorMessage = aborted ? "已停止本轮生成。" : error instanceof Error ? error.message : "生成失败。";
     run.finishedAt = Date.now();
@@ -383,7 +396,7 @@ async function runPipeline(run: ChatRunState): Promise<void> {
     emitEvent(run, aborted ? "warning.raised" : "stream.failed", {
       runId: run.runId,
       message: run.errorMessage,
-      code: aborted ? ERROR_CODES.SSE_STREAM_ABORTED : ERROR_CODES.GRAPH_EXECUTION_FAILED
+      code: aborted ? ERROR_CODES.SSE_STREAM_ABORTED : explicitCode ?? ERROR_CODES.GRAPH_EXECUTION_FAILED
     });
     emitEvent(run, "stream.completed", {
       runId: run.runId,

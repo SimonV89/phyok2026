@@ -1,5 +1,6 @@
 import { env } from "../../config/env";
 import {
+  ERROR_CODES,
   buildInternalHeaders,
   createFailure,
   type ApiFailure,
@@ -31,12 +32,24 @@ export class HttpJavaDomainClient implements DomainClients {
   constructor(private readonly options: HttpJavaDomainClientOptions) {}
 
   async verifyToken(ctx: GatewayContext): Promise<VerifiedIdentity> {
+    if (!ctx.authorization?.trim()) {
+      throw new Error(`${ERROR_CODES.BFF_UNAUTHORIZED}: 请先登录后再开始对话。`);
+    }
+
     try {
-      return await this.request<VerifiedIdentity>(ctx, {
+      const identity = await this.request<VerifiedIdentity>(ctx, {
         method: "POST",
         path: "/internal/auth/verify-token",
         body: {}
       });
+      if (
+        identity.userId === "unknown" ||
+        identity.sessionId === "unknown" ||
+        identity.roles.includes("ANONYMOUS")
+      ) {
+        throw new Error(`${ERROR_CODES.BFF_UNAUTHORIZED}: 登录态已失效，请重新登录后继续。`);
+      }
+      return identity;
     } catch (error) {
       if (!env.localDebugAllowDegraded) {
         throw error;
@@ -227,6 +240,12 @@ export class HttpJavaDomainClient implements DomainClients {
         payload && "code" in payload && payload.code !== "OK"
           ? payload
           : createFailure(ctx.requestId, "JAVA_DOMAIN_HTTP_ERROR", `Request failed: ${options.path}`);
+      if (
+        options.path === "/internal/auth/verify-token" &&
+        (failure.code === "AUTH_UNAUTHORIZED" || failure.code === ERROR_CODES.BFF_UNAUTHORIZED)
+      ) {
+        throw new Error(`${ERROR_CODES.BFF_UNAUTHORIZED}: ${failure.message || "请先登录后再开始对话。"}`);
+      }
       throw new Error(`${failure.code}: ${failure.message}`);
     }
 

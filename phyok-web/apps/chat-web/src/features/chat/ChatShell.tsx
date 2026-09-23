@@ -673,11 +673,8 @@ export function ChatShell() {
     if (recordingError) {
       return recordingError;
     }
-    if (hasConversation) {
-      return "Thinking、流式响应与附件上下文会持续保留在本轮对话中。";
-    }
     return null;
-  }, [hasConversation, recordingElapsedMs, recordingError, recordingState]);
+  }, [recordingElapsedMs, recordingError, recordingState]);
   const openAuthDialog = useCallback(() => {
     setAuthDialogOpen(true);
     setPaymentFeedback(null);
@@ -903,6 +900,10 @@ export function ChatShell() {
           break;
         case "stream.failed":
           dispatch(failRun(event.data.message));
+          if (event.data.code === "BFF_UNAUTHORIZED") {
+            setPaymentFeedback("请先登录后再开始对话。");
+            openAuthDialog();
+          }
           clearActiveRun();
           break;
         case "stream.completed":
@@ -917,7 +918,7 @@ export function ChatShell() {
           break;
       }
     },
-    [clearActiveRun, dispatch, persistActiveRun]
+    [clearActiveRun, dispatch, openAuthDialog, persistActiveRun]
   );
 
   const attachFiles = useCallback(
@@ -1165,16 +1166,26 @@ export function ChatShell() {
         if (controller.signal.aborted) {
           return;
         }
-        dispatch(failRun(error instanceof Error ? error.message : "连接已中断。"));
+        const message = error instanceof Error ? error.message : "连接已中断。";
+        dispatch(failRun(message));
+        if (message.includes("BFF_UNAUTHORIZED")) {
+          setPaymentFeedback("请先登录后再开始对话。");
+          openAuthDialog();
+        }
       }
     },
-    [dispatch, handleEvent]
+    [dispatch, handleEvent, openAuthDialog]
   );
 
   const handleSend = useCallback(
     async (forcedText?: string) => {
       const text = (forcedText ?? chat.composerText).trim();
       if (!text && chat.attachments.length === 0) {
+        return;
+      }
+      if (!authSession?.sessionToken) {
+        setPaymentFeedback("请先登录后再开始对话。");
+        openAuthDialog();
         return;
       }
 
@@ -1218,7 +1229,7 @@ export function ChatShell() {
       dispatch(clearComposer());
       await startStream(text || "请结合我上传的内容继续。", conversationId, uploadedAttachments);
     },
-    [chat.attachments, chat.composerText, chat.conversationId, dispatch, persistConversationId, removePendingFiles, startStream]
+    [authSession?.sessionToken, chat.attachments, chat.composerText, chat.conversationId, dispatch, openAuthDialog, persistConversationId, removePendingFiles, startStream]
   );
 
   const launchIntentConversation = useCallback(
@@ -1982,11 +1993,11 @@ export function ChatShell() {
 
           {hasConversation ? (
             <div className="sidebar-card">
-              <div className="sidebar-card-kicker">账户状态</div>
+              <div className="sidebar-card-kicker">当前账号</div>
               <div className="sidebar-account-row">
                 <span>{authSession ? authSession.email : "未登录"}</span>
                 <button type="button" className="sidebar-link-button" onClick={openAuthDialog}>
-                  {authSession ? "切换账号" : "去登录"}
+                  {authSession ? "更换账号" : "去登录"}
                 </button>
               </div>
               {billingSummary ? (
@@ -1997,24 +2008,6 @@ export function ChatShell() {
                   </span>
                 </div>
               ) : null}
-            </div>
-          ) : null}
-
-          {hasConversation && authSession ? (
-            <div className="sidebar-card compact">
-              <div className="sidebar-card-kicker">最近审计</div>
-              {auditEvents.length === 0 ? (
-                <div className="sidebar-card-inline-muted">暂无审计事件</div>
-              ) : (
-                <div className="sidebar-audit-list">
-                  {auditEvents.slice(0, 3).map((item) => (
-                    <div key={item.id} className="sidebar-audit-item">
-                      <strong>{item.eventType}</strong>
-                      <span>{item.sourceService}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           ) : null}
 
@@ -2145,7 +2138,7 @@ export function ChatShell() {
               <div className="profile-stage-header">
                 <div>
                   <div className="history-stage-kicker">我的</div>
-                  <h2>登录、额度与支付都收口在这里</h2>
+                  <h2>管理你的账号、额度与支付</h2>
                 </div>
                 {authSession ? (
                   <button type="button" className="toolbar-login" onClick={handleLogout}>
@@ -2164,16 +2157,12 @@ export function ChatShell() {
                   {authSession ? (
                     <>
                       <h3>{authSession.email}</h3>
-                      <p>登录态会自动带上邮箱、用户 ID 和会话 ID，供 billing、payment 与审计链路复用。</p>
-                      <div className="profile-account-meta">
-                        <span>userId · {authSession.userId ?? "未分配"}</span>
-                        <span>sessionId · {authSession.sessionId ?? "未分配"}</span>
-                      </div>
+                      <p>当前账号已连接，可继续查看额度、管理支付与继续对话。</p>
                     </>
                   ) : (
                     <>
                       <h3>还未登录</h3>
-                      <p>使用邮箱验证码登录后，可以直接查看额度、切换账号，并从这里发起支付宝订单。</p>
+                      <p>登录后即可查看额度状态，并通过支付宝完成购买。</p>
                       <button type="button" className="send-button profile-primary-button" onClick={openAuthDialog}>
                         打开登录弹窗
                       </button>
@@ -2191,7 +2180,7 @@ export function ChatShell() {
                       </p>
                       <div className="profile-account-meta">
                         <span>推荐套餐 · {billingSummary.recommendedPlanId ?? "standard"}</span>
-                        <span>当前通道 · {billingSummary.paymentChannel}</span>
+                        <span>支付方式 · {billingSummary.paymentChannel}</span>
                       </div>
                     </>
                   ) : (
@@ -2226,7 +2215,7 @@ export function ChatShell() {
                 <div className="profile-plan-header">
                   <div>
                     <div className="sidebar-card-kicker">三档套餐</div>
-                    <h3>参考旧版套餐规则，统一改为支付宝入口</h3>
+                    <h3>选择适合你的额度方案</h3>
                   </div>
                 </div>
                 {billingPlansError ? <div className="history-stage-banner error">{billingPlansError}</div> : null}
@@ -2697,28 +2686,8 @@ export function ChatShell() {
       />
       {authDialogOpen ? (
         <div className="suggestion-guide-modal-backdrop" onClick={closeAuthDialog}>
-          <div className="auth-dialog-modal" role="dialog" aria-modal="true" aria-labelledby="auth-dialog-title" onClick={(event) => event.stopPropagation()}>
+          <div className="auth-dialog-modal" role="dialog" aria-modal="true" aria-label="邮箱验证码登录" onClick={(event) => event.stopPropagation()}>
             <EmailLoginCard mode="modal" onSuccess={handleAuthSuccess} onCancel={closeAuthDialog} />
-            <div className="auth-dialog-sidepanel">
-              <div className="sidebar-card-kicker">登录后可用</div>
-              <h3 id="auth-dialog-title">账户、额度与支付宝支付</h3>
-              <p>登录后即可查看额度状态、套餐信息与支付入口。</p>
-              <div className="auth-dialog-plan-list">
-                {billingPlansLoading ? (
-                  <span>正在加载套餐信息...</span>
-                ) : (
-                  billingPlans.map((plan) => (
-                    <div key={plan.id} className="auth-dialog-plan-item">
-                      <strong>
-                        {plan.name} · {(plan.priceFen / 100).toFixed(2)} 元
-                      </strong>
-                      <span>{plan.quota} 次额度</span>
-                    </div>
-                  ))
-                )}
-              </div>
-              {billingPlansError ? <div className="history-stage-banner error">{billingPlansError}</div> : null}
-            </div>
           </div>
         </div>
       ) : null}
