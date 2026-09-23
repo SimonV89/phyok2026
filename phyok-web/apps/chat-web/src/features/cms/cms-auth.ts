@@ -1,7 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 
 const CMS_SESSION_COOKIE = "phyok-cms-session";
 const CMS_SESSION_TTL_SECONDS = 60 * 60 * 12;
+let cachedRootEnv2Config: { username: string; password: string; secret: string } | null | undefined;
 
 function toBase64Url(value: string): string {
   return Buffer.from(value, "utf8").toString("base64url");
@@ -24,10 +27,78 @@ function safeEqual(left: string, right: string): boolean {
   return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+function stripWrappingQuotes(value: string): string {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+function parseEnvFile(raw: string): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+    const key = trimmed.slice(0, separatorIndex).trim();
+    const value = stripWrappingQuotes(trimmed.slice(separatorIndex + 1).trim());
+    if (key) {
+      result.set(key, value);
+    }
+  }
+  return result;
+}
+
+function readRootEnv2Config(): { username: string; password: string; secret: string } | null {
+  if (cachedRootEnv2Config !== undefined) {
+    return cachedRootEnv2Config;
+  }
+
+  const candidates: string[] = [];
+  let currentDir = process.cwd();
+  for (let i = 0; i < 6; i += 1) {
+    candidates.push(path.join(currentDir, "env2"));
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      break;
+    }
+    currentDir = parentDir;
+  }
+
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) {
+      continue;
+    }
+    try {
+      const parsed = parseEnvFile(readFileSync(candidate, "utf8"));
+      const username = parsed.get("CMS_ADMIN_USERNAME")?.trim() || "";
+      const password = parsed.get("CMS_ADMIN_PASSWORD")?.trim() || "";
+      const secret = (parsed.get("CMS_AUTH_SECRET")?.trim() || password).trim();
+      cachedRootEnv2Config = username && password && secret ? { username, password, secret } : null;
+      return cachedRootEnv2Config;
+    } catch {
+      cachedRootEnv2Config = null;
+      return cachedRootEnv2Config;
+    }
+  }
+
+  cachedRootEnv2Config = null;
+  return cachedRootEnv2Config;
+}
+
 function readCmsConfig() {
-  const username = process.env.CMS_ADMIN_USERNAME?.trim() || "";
-  const password = process.env.CMS_ADMIN_PASSWORD?.trim() || "";
-  const secret = process.env.CMS_AUTH_SECRET?.trim() || password;
+  const fallback = readRootEnv2Config();
+  const username = process.env.CMS_ADMIN_USERNAME?.trim() || fallback?.username || "";
+  const password = process.env.CMS_ADMIN_PASSWORD?.trim() || fallback?.password || "";
+  const secret = process.env.CMS_AUTH_SECRET?.trim() || fallback?.secret || password;
   return {
     username,
     password,
