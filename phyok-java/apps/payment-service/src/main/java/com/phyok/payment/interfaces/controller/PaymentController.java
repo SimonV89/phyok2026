@@ -1,6 +1,7 @@
 package com.phyok.payment.interfaces.controller;
 
 import com.phyok.contracts.ApiResponse;
+import com.phyok.contracts.PaymentOrderPageView;
 import com.phyok.payment.application.service.PaymentOrderService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -45,13 +46,29 @@ public class PaymentController {
             @RequestBody(required = false) Map<String, Object> body
     ) {
         String planId = body == null ? "" : String.valueOf(body.getOrDefault("planId", "")).trim();
+        String scene = body == null ? "desktop" : String.valueOf(body.getOrDefault("scene", "desktop")).trim();
         try {
-            return ApiResponse.ok(requestIdOrDefault(requestId), paymentOrderService.createAlipayOrder(userEmail, planId));
+            return ApiResponse.ok(requestIdOrDefault(requestId), paymentOrderService.createAlipayOrder(userEmail, planId, scene));
         } catch (IllegalArgumentException exception) {
             return ApiResponse.fail(requestIdOrDefault(requestId), "PAYMENT_PLAN_INVALID", "不支持的套餐档位。", null);
         } catch (IllegalStateException exception) {
             return ApiResponse.fail(requestIdOrDefault(requestId), "PAYMENT_CONFIG_INVALID", exception.getMessage(), null);
         }
+    }
+
+    @GetMapping("/v2/payments/orders")
+    public ApiResponse<PaymentOrderPageView> listOrders(
+            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
+            @RequestParam(value = "appId", required = false) String appId,
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "pageNo", defaultValue = "1") Integer pageNo,
+            @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize
+    ) {
+        return ApiResponse.ok(
+                requestIdOrDefault(requestId),
+                paymentOrderService.listOrders(appId, keyword, status, pageNo, pageSize)
+        );
     }
 
     @GetMapping("/v2/payments/orders/{orderNo}")

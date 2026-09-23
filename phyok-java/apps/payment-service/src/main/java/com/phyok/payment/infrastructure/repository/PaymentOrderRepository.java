@@ -6,6 +6,7 @@ import com.phyok.payment.infrastructure.mybatis.mapper.PaymentOrderMapper;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 @Repository
 public class PaymentOrderRepository {
@@ -36,5 +37,13 @@ public class PaymentOrderRepository {
 
     public boolean insertNotifyLog(PaymentNotifyLogDO notifyLog) {
         return paymentOrderMapper.insertNotifyLog(notifyLog) > 0;
+    }
+
+    public int countOrders(String appId, String keyword, String status) {
+        return paymentOrderMapper.countOrders(appId, keyword, status);
+    }
+
+    public List<PaymentOrderDO> findOrdersPage(String appId, String keyword, String status, int limit, int offset) {
+        return paymentOrderMapper.selectOrdersPage(appId, keyword, status, limit, offset);
     }
 }

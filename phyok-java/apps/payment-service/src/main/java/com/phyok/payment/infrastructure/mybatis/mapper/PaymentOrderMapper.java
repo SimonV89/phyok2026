@@ -5,6 +5,8 @@ import com.phyok.payment.infrastructure.mybatis.entity.PaymentOrderDO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.List;
+
 @Mapper
 public interface PaymentOrderMapper {
     int insertOrder(PaymentOrderDO paymentOrder);
@@ -21,4 +23,18 @@ public interface PaymentOrderMapper {
     );
 
     int insertNotifyLog(PaymentNotifyLogDO notifyLog);
+
+    int countOrders(
+            @Param("appId") String appId,
+            @Param("keyword") String keyword,
+            @Param("status") String status
+    );
+
+    List<PaymentOrderDO> selectOrdersPage(
+            @Param("appId") String appId,
+            @Param("keyword") String keyword,
+            @Param("status") String status,
+            @Param("limit") int limit,
+            @Param("offset") int offset
+    );
 }

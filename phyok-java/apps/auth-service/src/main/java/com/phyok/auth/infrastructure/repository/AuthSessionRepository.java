@@ -1,10 +1,13 @@
 package com.phyok.auth.infrastructure.repository;
 
 import com.phyok.auth.infrastructure.mybatis.entity.AuthSessionPrincipalDO;
+import com.phyok.auth.infrastructure.mybatis.entity.AdminUserQueryDO;
 import com.phyok.auth.infrastructure.mybatis.entity.UserAccountDO;
 import com.phyok.auth.infrastructure.mybatis.entity.UserSessionWriteDO;
 import com.phyok.auth.infrastructure.mybatis.mapper.AuthSessionMapper;
 import org.springframework.stereotype.Repository;
+
+import java.util.List;
 
 @Repository
 public class AuthSessionRepository {
@@ -40,5 +43,25 @@ public class AuthSessionRepository {
 
     public void insertSession(UserSessionWriteDO userSession) {
         authSessionMapper.insertSession(userSession);
+    }
+
+    public int countUsers(String tenantId, String appId, String keyword, String status, boolean includeDeleted) {
+        return authSessionMapper.countUsers(tenantId, appId, keyword, status, includeDeleted);
+    }
+
+    public List<AdminUserQueryDO> findUsersPage(
+            String tenantId,
+            String appId,
+            String keyword,
+            String status,
+            boolean includeDeleted,
+            int limit,
+            int offset
+    ) {
+        return authSessionMapper.selectUsersPage(tenantId, appId, keyword, status, includeDeleted, limit, offset);
+    }
+
+    public AdminUserQueryDO findUserDetail(String tenantId, String appId, String userId) {
+        return authSessionMapper.selectUserDetail(tenantId, appId, userId);
     }
 }

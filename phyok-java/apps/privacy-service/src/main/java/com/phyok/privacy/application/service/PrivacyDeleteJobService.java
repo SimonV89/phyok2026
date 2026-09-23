@@ -1,5 +1,7 @@
 package com.phyok.privacy.application.service;
 
+import com.phyok.contracts.ComplaintTicketPageView;
+import com.phyok.contracts.ComplaintTicketView;
 import com.phyok.contracts.PrivacyDeleteJobPageView;
 import com.phyok.contracts.PrivacyDeleteJobView;
 import com.phyok.contracts.PrivacyEraseStatusView;
@@ -159,6 +161,35 @@ public class PrivacyDeleteJobService {
         return new PrivacyDeleteJobPageView(safePageNo, safePageSize, total, items);
     }
 
+    public ComplaintTicketPageView listComplaintTickets(
+            String tenantId,
+            String appId,
+            String userId,
+            String status,
+            Integer pageNo,
+            Integer pageSize
+    ) {
+        int safePageNo = pageNo == null || pageNo < 1 ? 1 : pageNo;
+        int safePageSize = pageSize == null || pageSize < 1 ? 20 : Math.min(pageSize, 100);
+        int offset = (safePageNo - 1) * safePageSize;
+        String safeTenantId = defaultIfBlank(tenantId, "tenant-demo");
+        String safeAppId = defaultIfBlank(appId, "app-self-explore");
+        String safeUserId = blankToNull(userId);
+        String safeStatus = blankToNull(status);
+        int total = privacyDeleteJobRepository.countJobs(safeTenantId, safeAppId, safeUserId, safeStatus);
+        List<ComplaintTicketView> items = privacyDeleteJobRepository.findJobsPage(
+                        safeTenantId,
+                        safeAppId,
+                        safeUserId,
+                        safeStatus,
+                        safePageSize,
+                        offset
+                ).stream()
+                .map(this::toComplaintTicketView)
+                .toList();
+        return new ComplaintTicketPageView(safePageNo, safePageSize, total, items);
+    }
+
     public PrivacyEraseStatusView eraseStatus(String tenantId, String appId) {
         String safeTenantId = defaultIfBlank(tenantId, "tenant-demo");
         String safeAppId = defaultIfBlank(appId, "app-self-explore");
@@ -183,6 +214,22 @@ public class PrivacyDeleteJobService {
         );
     }
 
+    private ComplaintTicketView toComplaintTicketView(PrivacyDeleteJobDO deleteJob) {
+        return new ComplaintTicketView(
+                deleteJob.getJobId(),
+                deleteJob.getTenantId(),
+                deleteJob.getAppId(),
+                deleteJob.getUserId(),
+                toComplaintCategory(deleteJob.getScope()),
+                deleteJob.getStatus(),
+                defaultIfBlank(deleteJob.getRequestedBy(), deleteJob.getUserId()),
+                buildComplaintSummary(deleteJob),
+                deleteJob.getAffectedCount(),
+                "privacy_delete_job",
+                deleteJob.getCreatedAt()
+        );
+    }
+
     private String generateJobId() {
         return "erase_" + UUID.randomUUID().toString().replace("-", "");
     }
@@ -197,6 +244,26 @@ public class PrivacyDeleteJobService {
 
     private boolean requiresTenantOrchestration(String scope) {
         return "APP_FULL_ERASURE".equalsIgnoreCase(scope) || "TENANT_FULL_ERASURE".equalsIgnoreCase(scope);
+    }
+
+    private String toComplaintCategory(String scope) {
+        if (scope == null || scope.isBlank()) {
+            return "privacy";
+        }
+        if ("TENANT_FULL_ERASURE".equalsIgnoreCase(scope)) {
+            return "tenant";
+        }
+        if ("APP_FULL_ERASURE".equalsIgnoreCase(scope)) {
+            return "application";
+        }
+        return "privacy";
+    }
+
+    private String buildComplaintSummary(PrivacyDeleteJobDO deleteJob) {
+        if (deleteJob.getReason() != null && !deleteJob.getReason().isBlank()) {
+            return deleteJob.getReason().trim();
+        }
+        return "隐私删除请求：" + defaultIfBlank(deleteJob.getScope(), "USER_FULL_ERASURE");
     }
 
     private void publishAuditEvent(

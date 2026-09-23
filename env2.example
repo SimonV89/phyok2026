@@ -14,6 +14,13 @@ CLIENT_BASE_URL=http://127.0.0.1:3001
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3002
 
 # -------------------------
+# CMS Admin
+# -------------------------
+CMS_ADMIN_USERNAME=
+CMS_ADMIN_PASSWORD=
+CMS_AUTH_SECRET=
+
+# -------------------------
 # Service Ports
 # -------------------------
 CHAT_WEB_PORT=3001

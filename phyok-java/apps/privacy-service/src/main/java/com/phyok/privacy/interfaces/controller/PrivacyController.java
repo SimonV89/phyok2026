@@ -1,6 +1,7 @@
 package com.phyok.privacy.interfaces.controller;
 
 import com.phyok.contracts.ApiResponse;
+import com.phyok.contracts.ComplaintTicketPageView;
 import com.phyok.contracts.PrivacyDeleteJobPageView;
 import com.phyok.contracts.PrivacyDeleteJobView;
 import com.phyok.contracts.PrivacyEraseStatusView;
@@ -81,6 +82,22 @@ public class PrivacyController {
         return ApiResponse.ok(
                 requestIdOrDefault(requestId),
                 privacyDeleteJobService.listJobs(tenantId, appId, userId, status, pageNo, pageSize)
+        );
+    }
+
+    @GetMapping("/internal/privacy/admin/complaints")
+    public ApiResponse<ComplaintTicketPageView> listComplaintTickets(
+            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
+            @RequestParam(value = "tenantId", defaultValue = "tenant-demo") String tenantId,
+            @RequestParam(value = "appId", defaultValue = "app-self-explore") String appId,
+            @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "pageNo", defaultValue = "1") Integer pageNo,
+            @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize
+    ) {
+        return ApiResponse.ok(
+                requestIdOrDefault(requestId),
+                privacyDeleteJobService.listComplaintTickets(tenantId, appId, userId, status, pageNo, pageSize)
         );
     }
 

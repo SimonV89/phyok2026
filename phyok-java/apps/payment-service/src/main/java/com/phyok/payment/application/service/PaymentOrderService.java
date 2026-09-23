@@ -1,5 +1,7 @@
 package com.phyok.payment.application.service;
 
+import com.phyok.contracts.PaymentOrderListItemView;
+import com.phyok.contracts.PaymentOrderPageView;
 import com.phyok.payment.infrastructure.mybatis.entity.PaymentNotifyLogDO;
 import com.phyok.payment.infrastructure.mybatis.entity.PaymentOrderDO;
 import com.phyok.payment.infrastructure.repository.PaymentOrderRepository;
@@ -9,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -41,7 +44,7 @@ public class PaymentOrderService {
         this.paymentOrderRepository = paymentOrderRepository;
     }
 
-    public Map<String, Object> createAlipayOrder(String userEmail, String planId) {
+    public Map<String, Object> createAlipayOrder(String userEmail, String planId, String scene) {
         PlanDefinition planDefinition = PLAN_DEFINITIONS.get(planId);
         if (planDefinition == null) {
             throw new IllegalArgumentException("不支持的套餐档位。");
@@ -68,10 +71,13 @@ public class PaymentOrderService {
                 null,
                 null
         );
-        String payUrl = alipaySignatureService.buildPagePayUrl(draftRecord);
+        PaymentMode paymentMode = resolvePaymentMode(scene);
+        String payUrl = paymentMode == PaymentMode.WAP
+                ? alipaySignatureService.buildWapPayUrl(draftRecord)
+                : alipaySignatureService.buildPagePayUrl(draftRecord);
         PaymentOrderRecord finalized = draftRecord.withCheckout(payUrl, payUrl);
         paymentOrderRepository.insertOrder(toPaymentOrderDO(finalized));
-        return toOrderPayload(finalized);
+        return toOrderPayload(finalized, paymentMode);
     }
 
     public Map<String, Object> queryOrder(String orderNo, boolean refreshStatus) {
@@ -80,6 +86,20 @@ public class PaymentOrderService {
             order = refreshOrderStatus(order);
         }
         return toOrderPayload(toRecord(order));
+    }
+
+    public PaymentOrderPageView listOrders(String appId, String keyword, String status, Integer pageNo, Integer pageSize) {
+        int safePageNo = pageNo == null || pageNo < 1 ? 1 : pageNo;
+        int safePageSize = pageSize == null || pageSize < 1 ? 20 : Math.min(pageSize, 100);
+        int offset = (safePageNo - 1) * safePageSize;
+        String safeAppId = appId == null || appId.isBlank() ? DEFAULT_APP_ID : appId.trim();
+        String safeKeyword = keyword == null || keyword.isBlank() ? null : keyword.trim();
+        String safeStatus = status == null || status.isBlank() ? null : status.trim();
+        int total = paymentOrderRepository.countOrders(safeAppId, safeKeyword, safeStatus);
+        List<PaymentOrderListItemView> items = paymentOrderRepository.findOrdersPage(safeAppId, safeKeyword, safeStatus, safePageSize, offset).stream()
+                .map(this::toListItemView)
+                .toList();
+        return new PaymentOrderPageView(safePageNo, safePageSize, total, items);
     }
 
     public boolean handleAlipayNotify(Map<String, String> callbackParams) {
@@ -233,16 +253,21 @@ public class PaymentOrderService {
     }
 
     private Map<String, Object> toOrderPayload(PaymentOrderRecord order) {
+        return toOrderPayload(order, inferPaymentMode(order.payUrl()));
+    }
+
+    private Map<String, Object> toOrderPayload(PaymentOrderRecord order, PaymentMode paymentMode) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("orderNo", order.orderNo());
         payload.put("planId", order.planId());
         payload.put("amountFen", order.amountFen());
         payload.put("quota", order.quota());
         payload.put("paymentChannel", "alipay");
+        payload.put("paymentMode", paymentMode.name());
         payload.put("status", order.status());
         payload.put("payUrl", order.payUrl());
         payload.put("qrCodeUrl", order.qrCodeUrl());
-        payload.put("qrCodeContent", order.qrCodeUrl());
+        payload.put("qrCodeContent", order.payUrl());
         payload.put("expiresAt", order.expiresAt().toString());
         payload.put("buyerEmail", order.userEmail());
         if (order.tradeNo() != null) {
@@ -252,6 +277,24 @@ public class PaymentOrderService {
             payload.put("paidAt", order.paidAt().toString());
         }
         return payload;
+    }
+
+    private PaymentOrderListItemView toListItemView(PaymentOrderDO order) {
+        return new PaymentOrderListItemView(
+                order.getId(),
+                order.getUserEmail(),
+                order.getPlanId(),
+                order.getSubject(),
+                order.getAmountFen(),
+                order.getQuota(),
+                order.getStatus(),
+                "alipay",
+                inferPaymentMode(order.getPayUrl()).name(),
+                order.getTradeNo(),
+                order.getCreatedAt(),
+                order.getExpiresAt(),
+                order.getPaidAt()
+        );
     }
 
     private String canonicalPayload(Map<String, String> callbackParams) {
@@ -279,7 +322,20 @@ public class PaymentOrderService {
         return userEmail == null || userEmail.isBlank() ? "anonymous@local" : userEmail.trim().toLowerCase(Locale.ROOT);
     }
 
+    private PaymentMode resolvePaymentMode(String scene) {
+        return "mobile".equalsIgnoreCase(scene) || "wap".equalsIgnoreCase(scene) ? PaymentMode.WAP : PaymentMode.PAGE;
+    }
+
+    private PaymentMode inferPaymentMode(String payUrl) {
+        return payUrl != null && payUrl.contains("alipay.trade.wap.pay") ? PaymentMode.WAP : PaymentMode.PAGE;
+    }
+
     private record PlanDefinition(String id, String name, int priceFen, int quota) {
+    }
+
+    private enum PaymentMode {
+        PAGE,
+        WAP
     }
 
     public record PaymentOrderRecord(

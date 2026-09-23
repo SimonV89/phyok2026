@@ -1,19 +1,24 @@
 package com.phyok.auth.interfaces.controller;
 
 import com.phyok.contracts.ApiResponse;
+import com.phyok.contracts.AdminUserPageView;
+import com.phyok.contracts.AdminUserView;
 import com.phyok.contracts.AuthEraseResultView;
 import com.phyok.contracts.AuthPrincipalView;
+import com.phyok.auth.application.service.AuthAdminQueryService;
 import com.phyok.auth.application.service.AuthCommandService;
 import com.phyok.auth.application.service.AuthQueryService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpHeaders;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
@@ -22,10 +27,16 @@ import java.util.Map;
 @RequestMapping
 public class AuthController {
     private final AuthQueryService authQueryService;
+    private final AuthAdminQueryService authAdminQueryService;
     private final AuthCommandService authCommandService;
 
-    public AuthController(AuthQueryService authQueryService, AuthCommandService authCommandService) {
+    public AuthController(
+            AuthQueryService authQueryService,
+            AuthAdminQueryService authAdminQueryService,
+            AuthCommandService authCommandService
+    ) {
         this.authQueryService = authQueryService;
+        this.authAdminQueryService = authAdminQueryService;
         this.authCommandService = authCommandService;
     }
 
@@ -88,6 +99,37 @@ public class AuthController {
                     Map.of("verified", false)
             );
         }
+    }
+
+    @GetMapping("/internal/auth/admin/users")
+    public ApiResponse<AdminUserPageView> listUsers(
+            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
+            @RequestParam(value = "tenantId", required = false) String tenantId,
+            @RequestParam(value = "appId", required = false) String appId,
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "pageNo", defaultValue = "1") Integer pageNo,
+            @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize,
+            @RequestParam(value = "includeDeleted", defaultValue = "false") boolean includeDeleted
+    ) {
+        return ApiResponse.ok(
+                requestIdOrDefault(requestId),
+                authAdminQueryService.listUsers(tenantId, appId, keyword, status, pageNo, pageSize, includeDeleted)
+        );
+    }
+
+    @GetMapping("/internal/auth/admin/users/{userId}")
+    public ApiResponse<AdminUserView> userDetail(
+            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
+            @PathVariable("userId") String userId,
+            @RequestParam(value = "tenantId", required = false) String tenantId,
+            @RequestParam(value = "appId", required = false) String appId
+    ) {
+        AdminUserView view = authAdminQueryService.getUserDetail(tenantId, appId, userId);
+        if (view == null) {
+            return ApiResponse.fail(requestIdOrDefault(requestId), "AUTH_USER_NOT_FOUND", "用户不存在。", null);
+        }
+        return ApiResponse.ok(requestIdOrDefault(requestId), view);
     }
 
     @PostMapping("/internal/auth/erase-user")

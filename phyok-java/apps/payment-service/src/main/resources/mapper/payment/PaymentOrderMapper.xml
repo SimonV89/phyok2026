@@ -79,4 +79,51 @@
         )
         on conflict do nothing
     </insert>
+
+    <sql id="PaymentOrderFilters">
+        where app_id = #{appId}
+        <if test="status != null and status != ''">
+          and status = #{status}
+        </if>
+        <if test="keyword != null and keyword != ''">
+          and (
+            lower(user_email) like concat('%', lower(#{keyword}), '%')
+            or lower(id) like concat('%', lower(#{keyword}), '%')
+            or lower(coalesce(trade_no, '')) like concat('%', lower(#{keyword}), '%')
+            or lower(plan_id) like concat('%', lower(#{keyword}), '%')
+          )
+        </if>
+    </sql>
+
+    <select id="countOrders" resultType="int">
+        select count(1)
+        from payment_order
+        <include refid="PaymentOrderFilters"/>
+    </select>
+
+    <select id="selectOrdersPage" resultMap="PaymentOrderResultMap">
+        select id,
+               app_id,
+               user_email,
+               plan_id,
+               subject,
+               amount_fen,
+               quota,
+               status,
+               pay_url,
+               qr_code_url,
+               trade_no,
+               buyer_id,
+               notify_payload,
+               expires_at,
+               paid_at,
+               version,
+               created_at,
+               updated_at
+        from payment_order
+        <include refid="PaymentOrderFilters"/>
+        order by created_at desc, id desc
+        limit #{limit}
+        offset #{offset}
+    </select>
 </mapper>
