@@ -207,7 +207,21 @@ export class HttpJavaDomainClient implements DomainClients {
       clearTimeout(timeout);
     }
 
-    const payload = (await response.json()) as JsonEnvelope<T>;
+    const rawPayload = await response.text();
+    if (!rawPayload.trim()) {
+      throw new Error(`JAVA_DOMAIN_EMPTY_RESPONSE: ${options.path} (status ${response.status})`);
+    }
+
+    let payload: JsonEnvelope<T>;
+    try {
+      payload = JSON.parse(rawPayload) as JsonEnvelope<T>;
+    } catch {
+      const snippet = rawPayload.slice(0, 240).replace(/\s+/g, " ").trim();
+      throw new Error(
+        `JAVA_DOMAIN_INVALID_JSON: ${options.path} (status ${response.status})${snippet ? ` body=${snippet}` : ""}`
+      );
+    }
+
     if (!response.ok || payload.code !== "OK") {
       const failure =
         payload && "code" in payload && payload.code !== "OK"
