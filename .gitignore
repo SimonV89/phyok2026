@@ -23,6 +23,8 @@ env2.*
 # Deployment runtime artifacts
 /deploy/backups/
 /GSB00001646198.cer
+/phyok-node2/data/
+**/chat-v2-history.json
 
 # OS / editor noise
 .DS_Store

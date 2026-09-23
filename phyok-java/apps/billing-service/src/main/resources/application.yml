@@ -1,5 +1,20 @@
 spring:
   application:
     name: billing-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:phyok}
+    username: ${POSTGRES_USER:phyok}
+    password: ${POSTGRES_PASSWORD:change_me_pg}
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    table: flyway_schema_history_billing
+    locations: classpath:db/migration
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.phyok.billing.infrastructure.mybatis.entity
+  configuration:
+    map-underscore-to-camel-case: true
 server:
   port: ${BILLING_PORT:18085}

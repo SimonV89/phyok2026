@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.phyok.payment.infrastructure.mybatis.mapper.PaymentOrderMapper">
+
+    <resultMap id="PaymentOrderResultMap" type="com.phyok.payment.infrastructure.mybatis.entity.PaymentOrderDO">
+        <id property="id" column="id"/>
+        <result property="appId" column="app_id"/>
+        <result property="userEmail" column="user_email"/>
+        <result property="planId" column="plan_id"/>
+        <result property="subject" column="subject"/>
+        <result property="amountFen" column="amount_fen"/>
+        <result property="quota" column="quota"/>
+        <result property="status" column="status"/>
+        <result property="payUrl" column="pay_url"/>
+        <result property="qrCodeUrl" column="qr_code_url"/>
+        <result property="tradeNo" column="trade_no"/>
+        <result property="buyerId" column="buyer_id"/>
+        <result property="notifyPayload" column="notify_payload"/>
+        <result property="expiresAt" column="expires_at"/>
+        <result property="paidAt" column="paid_at"/>
+        <result property="version" column="version"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insertOrder">
+        insert into payment_order (
+            id, app_id, user_email, plan_id, subject, amount_fen, quota, status, pay_url, qr_code_url,
+            trade_no, buyer_id, notify_payload, expires_at, paid_at, version, created_at, updated_at
+        ) values (
+            #{id}, #{appId}, #{userEmail}, #{planId}, #{subject}, #{amountFen}, #{quota}, #{status}, #{payUrl}, #{qrCodeUrl},
+            #{tradeNo}, #{buyerId}, #{notifyPayload}, #{expiresAt}, #{paidAt}, 0, now(), now()
+        )
+    </insert>
+
+    <select id="selectOrderById" resultMap="PaymentOrderResultMap">
+        select id,
+               app_id,
+               user_email,
+               plan_id,
+               subject,
+               amount_fen,
+               quota,
+               status,
+               pay_url,
+               qr_code_url,
+               trade_no,
+               buyer_id,
+               notify_payload,
+               expires_at,
+               paid_at,
+               version,
+               created_at,
+               updated_at
+        from payment_order
+        where id = #{id}
+        limit 1
+    </select>
+
+    <update id="updateOrderStatus">
+        update payment_order
+        set status = #{status},
+            trade_no = #{tradeNo},
+            buyer_id = #{buyerId},
+            notify_payload = #{notifyPayload},
+            paid_at = #{paidAt},
+            updated_at = now(),
+            version = version + 1
+        where id = #{id}
+    </update>
+
+    <insert id="insertNotifyLog">
+        insert into payment_notify_log (
+            id, order_id, notify_id, trade_no, trade_status, request_body_hash, processed, payload_json, created_at
+        ) values (
+            #{id}, #{orderId}, #{notifyId}, #{tradeNo}, #{tradeStatus}, #{requestBodyHash}, #{processed}, #{payloadJson}, now()
+        )
+        on conflict do nothing
+    </insert>
+</mapper>

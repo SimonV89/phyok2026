@@ -4,6 +4,7 @@ import type {
 } from "../graph-flows/self-explore/state";
 
 export type GatewayContext = {
+  authorization?: string;
   requestId: string;
   traceId: string;
   tenantId?: string;

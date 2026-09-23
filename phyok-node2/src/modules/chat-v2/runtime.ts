@@ -1,6 +1,9 @@
+import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import type { ServerResponse } from "node:http";
+import path from "node:path";
 
+import { env } from "../../config/env";
 import { ERROR_CODES } from "../../packages/contracts/api";
 import type { StreamEventName, SseEventPayloadMap } from "../../packages/contracts/sse";
 import { executeSelfExploreFlow } from "../../packages/graph-flows/self-explore/executor";
@@ -28,6 +31,22 @@ export type ChatHistoryItem = {
   status: ChatV2RunStatus;
   createdAt: number;
   attachments: ChatV2Attachment[];
+  thinking?: string;
+  actions?: ChatV2Action[];
+};
+
+export type ConversationHistorySummary = {
+  conversationId: string;
+  latestRunId: string;
+  title: string;
+  latestPreview: string;
+  latestUserMessage: string;
+  latestAssistantMessage: string;
+  status: ChatV2RunStatus;
+  attachmentCount: number;
+  turnCount: number;
+  startedAt: number;
+  updatedAt: number;
 };
 
 export type ChatV2Event = {
@@ -39,6 +58,7 @@ export type ChatV2Event = {
 export type ChatV2RunStatus = "queued" | "running" | "completed" | "failed" | "stopped";
 
 type ChatRunInput = {
+  authorization?: string;
   requestId: string;
   traceId: string;
   appId: string;
@@ -67,12 +87,173 @@ type ChatRunState = {
   abortController: AbortController;
 };
 
+type PersistedChatRunState = {
+  runId: string;
+  input: Omit<ChatRunInput, "authorization">;
+  status: ChatV2RunStatus;
+  createdAt: number;
+  updatedAt: number;
+  finishedAt: number | null;
+  thinking: string;
+  answer: string;
+  actions: ChatV2Action[];
+  errorMessage: string | null;
+  sequence: number;
+  started: boolean;
+};
+
+type PersistedChatRunStore = {
+  version: number;
+  runs: PersistedChatRunState[];
+};
+
 const HEARTBEAT_MS = 12000;
-const RUN_TTL_MS = 30 * 60 * 1000;
+const CHAT_RUN_STORE_VERSION = 1;
+const RUN_TTL_MS = env.chatHistoryRetentionDays * 24 * 60 * 60 * 1000;
 const runs = new Map<string, ChatRunState>();
+let persistQueue = Promise.resolve();
+
+function isRunStatus(value: unknown): value is ChatV2RunStatus {
+  return value === "queued" || value === "running" || value === "completed" || value === "failed" || value === "stopped";
+}
+
+function toPersistedRun(run: ChatRunState): PersistedChatRunState {
+  return {
+    runId: run.runId,
+    input: {
+      requestId: run.input.requestId,
+      traceId: run.input.traceId,
+      appId: run.input.appId,
+      userId: run.input.userId,
+      sessionId: run.input.sessionId,
+      conversationId: run.input.conversationId,
+      message: run.input.message,
+      attachments: run.input.attachments
+    },
+    status: run.status,
+    createdAt: run.createdAt,
+    updatedAt: run.updatedAt,
+    finishedAt: run.finishedAt,
+    thinking: run.thinking,
+    answer: run.answer,
+    actions: run.actions,
+    errorMessage: run.errorMessage,
+    sequence: run.sequence,
+    started: run.started
+  };
+}
+
+function hydratePersistedRun(record: PersistedChatRunState, now: number): ChatRunState {
+  const status = record.status === "queued" || record.status === "running" ? "stopped" : record.status;
+  const updatedAt = record.status === "queued" || record.status === "running" ? now : record.updatedAt;
+  const finishedAt =
+    record.status === "queued" || record.status === "running" ? record.finishedAt ?? now : record.finishedAt;
+  const errorMessage =
+    record.status === "queued" || record.status === "running"
+      ? record.errorMessage || "服务已重启，本轮生成已停止。"
+      : record.errorMessage;
+
+  return {
+    runId: record.runId,
+    input: {
+      authorization: undefined,
+      requestId: record.input.requestId,
+      traceId: record.input.traceId,
+      appId: record.input.appId,
+      userId: record.input.userId,
+      sessionId: record.input.sessionId,
+      conversationId: record.input.conversationId,
+      message: record.input.message,
+      attachments: record.input.attachments
+    },
+    status,
+    createdAt: record.createdAt,
+    updatedAt,
+    finishedAt,
+    thinking: record.thinking,
+    answer: record.answer,
+    actions: record.actions,
+    errorMessage,
+    events: [],
+    subscribers: new Map(),
+    sequence: record.sequence,
+    started: true,
+    abortController: new AbortController()
+  };
+}
+
+async function persistRunsToDisk(): Promise<void> {
+  const targetFile = env.chatHistoryStoreFile;
+  const snapshot: PersistedChatRunStore = {
+    version: CHAT_RUN_STORE_VERSION,
+    runs: [...runs.values()].map(toPersistedRun)
+  };
+
+  await fs.promises.mkdir(path.dirname(targetFile), { recursive: true });
+  const tempFile = `${targetFile}.tmp`;
+  await fs.promises.writeFile(tempFile, JSON.stringify(snapshot), "utf-8");
+  await fs.promises.rename(tempFile, targetFile);
+}
+
+function schedulePersistRuns(): void {
+  persistQueue = persistQueue
+    .then(() => persistRunsToDisk())
+    .catch((error) => {
+      console.warn("[chat-v2] failed to persist chat history store", error);
+    });
+}
+
+function loadPersistedRuns(): void {
+  const targetFile = env.chatHistoryStoreFile;
+  if (!fs.existsSync(targetFile)) {
+    return;
+  }
+
+  try {
+    const raw = fs.readFileSync(targetFile, "utf-8").trim();
+    if (!raw) {
+      return;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<PersistedChatRunStore>;
+    const records = Array.isArray(parsed.runs) ? parsed.runs : [];
+    const now = Date.now();
+    let mutated = false;
+
+    for (const record of records) {
+      if (
+        !record ||
+        typeof record !== "object" ||
+        typeof record.runId !== "string" ||
+        !record.input ||
+        typeof record.input !== "object" ||
+        typeof record.input.conversationId !== "string" ||
+        typeof record.input.message !== "string" ||
+        !isRunStatus(record.status)
+      ) {
+        mutated = true;
+        continue;
+      }
+
+      const hydrated = hydratePersistedRun(record as PersistedChatRunState, now);
+      if (hydrated.status !== record.status) {
+        mutated = true;
+      }
+      runs.set(hydrated.runId, hydrated);
+    }
+
+    pruneRuns();
+    if (mutated) {
+      schedulePersistRuns();
+    }
+  } catch (error) {
+    console.warn("[chat-v2] failed to load chat history store", error);
+  }
+}
 
 function pruneRuns(): void {
   const now = Date.now();
+  let removed = false;
   for (const [runId, run] of runs) {
     if (run.status === "running" || run.status === "queued") {
       continue;
@@ -81,8 +262,14 @@ function pruneRuns(): void {
       continue;
     }
     runs.delete(runId);
+    removed = true;
+  }
+  if (removed) {
+    schedulePersistRuns();
   }
 }
+
+loadPersistedRuns();
 
 function inferAttachmentKind(mimeType: string): ChatV2Attachment["kind"] {
   if (mimeType.startsWith("image/")) {
@@ -139,6 +326,7 @@ async function runPipeline(run: ChatRunState): Promise<void> {
   run.started = true;
   run.status = "running";
   run.updatedAt = Date.now();
+  schedulePersistRuns();
 
   try {
     const result = await executeSelfExploreFlow({
@@ -148,6 +336,7 @@ async function runPipeline(run: ChatRunState): Promise<void> {
       query: run.input.message,
       attachments: run.input.attachments,
       context: {
+        authorization: run.input.authorization,
         requestId: run.input.requestId,
         traceId: run.input.traceId,
         appId: run.input.appId,
@@ -173,6 +362,7 @@ async function runPipeline(run: ChatRunState): Promise<void> {
     run.thinking = result.thinking;
     run.answer = result.response;
     run.actions = result.actions;
+    schedulePersistRuns();
     emitEvent(run, "message.completed", {
       runId: run.runId,
       message: result.response,
@@ -189,6 +379,7 @@ async function runPipeline(run: ChatRunState): Promise<void> {
     run.errorMessage = aborted ? "已停止本轮生成。" : error instanceof Error ? error.message : "生成失败。";
     run.finishedAt = Date.now();
     run.updatedAt = Date.now();
+    schedulePersistRuns();
     emitEvent(run, aborted ? "warning.raised" : "stream.failed", {
       runId: run.runId,
       message: run.errorMessage,
@@ -212,6 +403,7 @@ async function runPipeline(run: ChatRunState): Promise<void> {
 }
 
 export function createChatRun(input: {
+  authorization?: string;
   requestId: string;
   traceId: string;
   appId: string;
@@ -236,10 +428,11 @@ export function createChatRun(input: {
   const run: ChatRunState = {
     runId,
     input: {
+      authorization: input.authorization,
       requestId: input.requestId,
       traceId: input.traceId,
       appId: input.appId,
-      userId: input.userId?.trim() || "guest_demo",
+      userId: input.userId?.trim() || "guest_anonymous",
       sessionId: input.sessionId?.trim() || `sess_${runId}`,
       conversationId,
       message: input.message.trim(),
@@ -261,6 +454,7 @@ export function createChatRun(input: {
   };
 
   runs.set(runId, run);
+  schedulePersistRuns();
   queueMicrotask(() => {
     void runPipeline(run);
   });
@@ -331,7 +525,9 @@ export function getConversationHistoryPage(options: {
         content: assistantContent,
         status: run.status,
         createdAt: run.finishedAt ?? run.updatedAt,
-        attachments: []
+        attachments: [],
+        thinking: run.thinking,
+        actions: run.actions
       };
 
       return assistantTurn.content ? [userTurn, assistantTurn] : [userTurn];
@@ -347,6 +543,126 @@ export function getConversationHistoryPage(options: {
     nextCursor: end < allItems.length ? String(end) : null,
     hasNext: end < allItems.length,
     total: allItems.length
+  };
+}
+
+export function getConversationSummaryPage(options: {
+  pageNo: number;
+  pageSize: number;
+  keyword?: string;
+}): {
+  pageNo: number;
+  pageSize: number;
+  total: number;
+  items: ConversationHistorySummary[];
+} {
+  pruneRuns();
+
+  const grouped = new Map<string, ChatRunState[]>();
+  for (const run of runs.values()) {
+    const list = grouped.get(run.input.conversationId);
+    if (list) {
+      list.push(run);
+      continue;
+    }
+    grouped.set(run.input.conversationId, [run]);
+  }
+
+  const summaries = [...grouped.entries()]
+    .map<ConversationHistorySummary>(([conversationId, conversationRuns]) => {
+      const orderedRuns = [...conversationRuns].sort((left, right) => left.createdAt - right.createdAt);
+      const firstRun = orderedRuns[0];
+      const latestRun = orderedRuns[orderedRuns.length - 1];
+      const latestAssistantMessage =
+        latestRun.answer ||
+        (latestRun.status === "failed" || latestRun.status === "stopped" ? latestRun.errorMessage || "" : "");
+      const latestPreview = latestAssistantMessage || latestRun.input.message;
+      const titleSource = firstRun.input.message || latestPreview || "未命名对话";
+      const compactTitle = titleSource.replace(/\s+/g, " ").trim();
+
+      return {
+        conversationId,
+        latestRunId: latestRun.runId,
+        title: compactTitle.length > 28 ? `${compactTitle.slice(0, 28)}…` : compactTitle,
+        latestPreview,
+        latestUserMessage: latestRun.input.message,
+        latestAssistantMessage,
+        status: latestRun.status,
+        attachmentCount: orderedRuns.reduce((sum, run) => sum + run.input.attachments.length, 0),
+        turnCount: orderedRuns.length,
+        startedAt: firstRun.createdAt,
+        updatedAt: latestRun.finishedAt ?? latestRun.updatedAt
+      };
+    })
+    .filter((item) => {
+      const keyword = options.keyword?.trim().toLowerCase();
+      if (!keyword) {
+        return true;
+      }
+      return [
+        item.title,
+        item.latestPreview,
+        item.latestUserMessage,
+        item.latestAssistantMessage,
+        item.conversationId
+      ].some((value) => value.toLowerCase().includes(keyword));
+    })
+    .sort((left, right) => right.updatedAt - left.updatedAt);
+
+  const safePageNo = Math.max(1, options.pageNo);
+  const safePageSize = Math.max(1, options.pageSize);
+  const start = (safePageNo - 1) * safePageSize;
+  const items = summaries.slice(start, start + safePageSize);
+
+  return {
+    pageNo: safePageNo,
+    pageSize: safePageSize,
+    total: summaries.length,
+    items
+  };
+}
+
+export function deleteConversationHistory(conversationId: string): {
+  deleted: boolean;
+  deletedRuns: number;
+  conversationId: string;
+} {
+  const targetConversationId = conversationId.trim();
+  if (!targetConversationId) {
+    return {
+      deleted: false,
+      deletedRuns: 0,
+      conversationId: targetConversationId
+    };
+  }
+
+  let deletedRuns = 0;
+  for (const [runId, run] of runs) {
+    if (run.input.conversationId !== targetConversationId) {
+      continue;
+    }
+
+    for (const [, reply] of run.subscribers) {
+      try {
+        reply.end();
+      } catch {
+        // ignore
+      }
+    }
+    run.subscribers.clear();
+    run.abortController.abort();
+    runs.delete(runId);
+    deletedRuns += 1;
+  }
+
+  if (deletedRuns > 0) {
+    schedulePersistRuns();
+  }
+
+  return {
+    deleted: deletedRuns > 0,
+    deletedRuns,
+    conversationId: targetConversationId
   };
 }
 

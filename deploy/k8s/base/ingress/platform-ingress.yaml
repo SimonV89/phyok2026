@@ -80,6 +80,13 @@ spec:
                 name: payment-service
                 port:
                   number: 18086
+          - path: /api/pay/alipay/notify
+            pathType: Prefix
+            backend:
+              service:
+                name: payment-service
+                port:
+                  number: 18086
           - path: /v2/admin
             pathType: Prefix
             backend:

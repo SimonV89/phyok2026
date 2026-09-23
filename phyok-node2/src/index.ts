@@ -9,8 +9,30 @@ import { auditV2Routes } from "./modules/audit-v2/routes";
 import { authV2Routes } from "./modules/auth-v2/routes";
 import { billingV2Routes } from "./modules/billing-v2/routes";
 import { chatV2Routes } from "./modules/chat-v2/routes";
+import { memoryV2Routes } from "./modules/memory-v2/routes";
 import { mediaV2Routes } from "./modules/media-v2/routes";
+import { paymentsV2Routes } from "./modules/payments-v2/routes";
 import { createSuccess, extractExternalHeaders } from "./packages/contracts/api";
+
+function createAllowedOrigins(): string[] {
+  const baseOrigins = new Set<string>([env.clientBaseUrl]);
+
+  for (const raw of [env.clientBaseUrl, env.appBaseUrl]) {
+    try {
+      const parsed = new URL(raw);
+      if (parsed.hostname === "127.0.0.1") {
+        baseOrigins.add(`${parsed.protocol}//localhost${parsed.port ? `:${parsed.port}` : ""}`);
+      }
+      if (parsed.hostname === "localhost") {
+        baseOrigins.add(`${parsed.protocol}//127.0.0.1${parsed.port ? `:${parsed.port}` : ""}`);
+      }
+    } catch {
+      // Ignore invalid local URLs and keep explicit env values only.
+    }
+  }
+
+  return [...baseOrigins];
+}
 
 async function buildServer() {
   const app = Fastify({
@@ -21,8 +43,15 @@ async function buildServer() {
   });
 
   await app.register(helmet, { contentSecurityPolicy: false });
+  const allowedOrigins = createAllowedOrigins();
   await app.register(cors, {
-    origin: [env.clientBaseUrl],
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
     credentials: false
   });
   await app.register(multipart, {
@@ -64,8 +93,9 @@ async function buildServer() {
   await app.register(mediaV2Routes, { prefix: "/v2/media" });
   await app.register(authV2Routes, { prefix: "/v2/auth" });
   await app.register(billingV2Routes, { prefix: "/v2/billing" });
+  await app.register(paymentsV2Routes, { prefix: "/v2/payments" });
+  await app.register(memoryV2Routes, { prefix: "/v2/memories" });
   await app.register(auditV2Routes, { prefix: "/v2/audits" });
-
 
   return app;
 }

@@ -1,3 +1,4 @@
+import { env } from "../../config/env";
 import {
   buildInternalHeaders,
   createFailure,
@@ -30,11 +31,18 @@ export class HttpJavaDomainClient implements DomainClients {
   constructor(private readonly options: HttpJavaDomainClientOptions) {}
 
   async verifyToken(ctx: GatewayContext): Promise<VerifiedIdentity> {
-    return this.request<VerifiedIdentity>(ctx, {
-      method: "POST",
-      path: "/internal/auth/verify-token",
-      body: {}
-    });
+    try {
+      return await this.request<VerifiedIdentity>(ctx, {
+        method: "POST",
+        path: "/internal/auth/verify-token",
+        body: {}
+      });
+    } catch (error) {
+      if (!env.localDebugAllowDegraded) {
+        throw error;
+      }
+      return this.createLocalDebugIdentity(ctx);
+    }
   }
 
   async getMemoryGate(ctx: GatewayContext, query: string): Promise<MemoryGateResult> {
@@ -95,30 +103,46 @@ export class HttpJavaDomainClient implements DomainClients {
         : phase === "complete"
           ? "/internal/audit/trace-complete"
           : "/internal/audit/trace-event";
-    await this.request<Record<string, unknown>>(ctx, {
-      method: "POST",
-      path,
-      body: {
-        phase,
-        requestId: ctx.requestId,
-        traceId: ctx.traceId,
-        tenantId: ctx.tenantId,
-        appId: ctx.appId,
-        userId: ctx.userId,
-        sessionId: ctx.sessionId,
-        sourceService: "agent-runtime-langgraph"
+    try {
+      await this.request<Record<string, unknown>>(ctx, {
+        method: "POST",
+        path,
+        body: {
+          phase,
+          requestId: ctx.requestId,
+          traceId: ctx.traceId,
+          tenantId: ctx.tenantId,
+          appId: ctx.appId,
+          userId: ctx.userId,
+          sessionId: ctx.sessionId,
+          sourceService: "agent-runtime-langgraph"
+        }
+      });
+    } catch (error) {
+      if (!env.localDebugAllowDegraded) {
+        throw error;
       }
-    });
+    }
   }
 
   async precheckBilling(ctx: GatewayContext): Promise<BillingPrecheckResult> {
-    return this.request<BillingPrecheckResult>(ctx, {
-      method: "POST",
-      path: "/internal/billing/precheck",
-      body: {
-        scene: "chat.send"
+    try {
+      return await this.request<BillingPrecheckResult>(ctx, {
+        method: "POST",
+        path: "/internal/billing/precheck",
+        body: {
+          scene: "chat.send"
+        }
+      });
+    } catch (error) {
+      if (!env.localDebugAllowDegraded) {
+        throw error;
       }
-    });
+      return {
+        allowed: true,
+        plan: "local-debug"
+      };
+    }
   }
 
   private async request<T>(
@@ -132,6 +156,7 @@ export class HttpJavaDomainClient implements DomainClients {
     }
   ): Promise<T> {
     const internalHeaders = buildInternalHeaders({
+      authorization: ctx.authorization,
       requestId: ctx.requestId,
       traceId: ctx.traceId,
       appId: ctx.appId,
@@ -187,5 +212,21 @@ export class HttpJavaDomainClient implements DomainClients {
       return this.options.auditBaseUrl;
     }
     return this.options.defaultBaseUrl;
+  }
+
+  private createLocalDebugIdentity(ctx: GatewayContext): VerifiedIdentity {
+    const rawToken = ctx.authorization?.replace(/^Bearer\s+/i, "").trim();
+    const email = rawToken?.startsWith("debug-token:")
+      ? rawToken.slice("debug-token:".length).trim().toLowerCase()
+      : env.localDebugIdentityEmail;
+    const safeUserId = `user_${email.replace(/[^a-z0-9]+/g, "_")}`;
+    const sessionId = rawToken?.startsWith("debug-token:") ? `sess_${safeUserId}` : ctx.sessionId;
+    return {
+      tenantId: "tenant-demo",
+      appId: ctx.appId,
+      userId: safeUserId,
+      roles: ["USER"],
+      sessionId
+    };
   }
 }

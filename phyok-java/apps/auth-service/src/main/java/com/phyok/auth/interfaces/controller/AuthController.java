@@ -34,6 +34,14 @@ public class AuthController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @RequestHeader(value = "X-Request-Id", required = false) String requestId
     ) {
+        if (authorization == null || authorization.isBlank()) {
+            return ApiResponse.fail(
+                    requestIdOrDefault(requestId),
+                    "AUTH_UNAUTHORIZED",
+                    "缺少会话令牌。",
+                    (AuthPrincipalView) null
+            );
+        }
         return ApiResponse.ok(
                 requestIdOrDefault(requestId),
                 authQueryService.verifyToken(extractSessionToken(authorization))
@@ -108,9 +116,6 @@ public class AuthController {
     }
 
     private String extractSessionToken(String authorization) {
-        if (authorization == null || authorization.isBlank()) {
-            return "demo-token";
-        }
         String prefix = "Bearer ";
         return authorization.startsWith(prefix) ? authorization.substring(prefix.length()).trim() : authorization.trim();
     }

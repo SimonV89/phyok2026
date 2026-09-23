@@ -7,6 +7,7 @@ import com.phyok.contracts.MemoryBulkEraseResultView;
 import com.phyok.contracts.MemoryFragmentPageView;
 import com.phyok.contracts.MemoryFragmentView;
 import com.phyok.contracts.MemoryRetrievalPreviewView;
+import com.phyok.contracts.MemoryStarMapView;
 import com.phyok.memory.application.service.MemoryCommandService;
 import com.phyok.memory.application.service.MemoryQueryService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -121,6 +122,21 @@ public class MemoryController {
         return ApiResponse.ok(
                 requestIdOrDefault(requestId),
                 memoryQueryService.listFragments(tenantId, appId, userId, timelineRoot, pageNo, pageSize)
+        );
+    }
+
+    @GetMapping("/v2/memories/star-map")
+    public ApiResponse<MemoryStarMapView> starMap(
+            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
+            @RequestParam(value = "tenantId", defaultValue = "tenant-demo") String tenantId,
+            @RequestParam(value = "appId", defaultValue = "app-self-explore") String appId,
+            @RequestParam(value = "userId", defaultValue = "user-demo") String userId,
+            @RequestParam(value = "timelineRoot", required = false) String timelineRoot,
+            @RequestParam(value = "limit", defaultValue = "180") Integer limit
+    ) {
+        return ApiResponse.ok(
+                requestIdOrDefault(requestId),
+                memoryQueryService.buildStarMap(tenantId, appId, userId, timelineRoot, limit)
         );
     }
 

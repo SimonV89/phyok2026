@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.phyok.billing.infrastructure.mybatis.mapper.BillingAccountMapper">
+
+    <resultMap id="BillingAccountResultMap" type="com.phyok.billing.infrastructure.mybatis.entity.BillingAccountDO">
+        <id property="id" column="id"/>
+        <result property="appId" column="app_id"/>
+        <result property="userEmail" column="user_email"/>
+        <result property="planId" column="plan_id"/>
+        <result property="baseQuota" column="base_quota"/>
+        <result property="purchasedQuota" column="purchased_quota"/>
+        <result property="consumedQuota" column="consumed_quota"/>
+        <result property="seedUser" column="seed_user"/>
+        <result property="status" column="status"/>
+        <result property="lastGrantOrderNo" column="last_grant_order_no"/>
+        <result property="lastGrantAt" column="last_grant_at"/>
+        <result property="version" column="version"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectAccountByAppAndEmail" resultMap="BillingAccountResultMap">
+        select id, app_id, user_email, plan_id, base_quota, purchased_quota, consumed_quota, seed_user, status,
+               last_grant_order_no, last_grant_at, version, created_at, updated_at
+        from billing_account
+        where app_id = #{appId}
+          and user_email = #{userEmail}
+        limit 1
+    </select>
+
+    <insert id="insertAccount">
+        insert into billing_account (
+            id, app_id, user_email, plan_id, base_quota, purchased_quota, consumed_quota, seed_user, status,
+            last_grant_order_no, last_grant_at, version, created_at, updated_at
+        ) values (
+            #{id}, #{appId}, #{userEmail}, #{planId}, #{baseQuota}, #{purchasedQuota}, #{consumedQuota}, #{seedUser}, #{status},
+            #{lastGrantOrderNo}, #{lastGrantAt}, 0, now(), now()
+        )
+        on conflict (app_id, user_email) do nothing
+    </insert>
+
+    <update id="addPurchasedQuota">
+        update billing_account
+        set plan_id = #{planId},
+            purchased_quota = purchased_quota + #{quota},
+            last_grant_order_no = #{orderNo},
+            last_grant_at = #{grantAt},
+            updated_at = now(),
+            version = version + 1
+        where id = #{id}
+    </update>
+
+    <insert id="insertGrantRecord">
+        insert into billing_grant_record (
+            id, order_no, app_id, user_email, plan_id, quota, amount_fen, payment_channel, status, created_at
+        ) values (
+            #{id}, #{orderNo}, #{appId}, #{userEmail}, #{planId}, #{quota}, #{amountFen}, #{paymentChannel}, #{status}, now()
+        )
+        on conflict (order_no) do nothing
+    </insert>
+</mapper>

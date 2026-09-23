@@ -46,6 +46,7 @@ public class AuthCommandService {
         String effectiveAppId = appId == null || appId.isBlank() ? properties.getDefaultAppId() : appId.trim();
         String codeKey = codeKey(effectiveAppId, normalizedEmail);
         OffsetDateTime now = OffsetDateTime.now();
+        boolean seedEmail = isSeedEmail(normalizedEmail);
 
         EmailCodeRecord previous = codeStore.get(codeKey);
         if (previous != null && previous.expiresAt().isAfter(now)) {
@@ -63,21 +64,27 @@ public class AuthCommandService {
             }
         }
 
-        String code = generateCode();
+        String code = seedEmail ? properties.getSeedEmailCode() : generateCode();
         OffsetDateTime expiresAt = now.plusSeconds(properties.getCodeTtlSeconds());
         codeStore.put(codeKey, new EmailCodeRecord(code, expiresAt, now));
-        emailService.sendLoginCode(normalizedEmail, code, normalizedLocale);
+        if (!seedEmail) {
+            emailService.sendLoginCode(normalizedEmail, code, normalizedLocale);
+        }
         publishAuditEvent(requestId, properties.getDefaultTenantId(), effectiveAppId, "anonymous", "AUTH_EMAIL_CODE_SENT", normalizedEmail, Map.of(
                 "locale", normalizedLocale,
-                "expiresInSec", properties.getCodeTtlSeconds()
+                "expiresInSec", properties.getCodeTtlSeconds(),
+                "seedUser", seedEmail
         ));
 
-        return Map.of(
-                "accepted", true,
-                "ticket", "code_" + UUID.randomUUID(),
-                "retryAfterSec", properties.getSendCooldownSeconds(),
-                "expiresInSec", properties.getCodeTtlSeconds()
-        );
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("accepted", true);
+        result.put("ticket", "code_" + UUID.randomUUID());
+        result.put("retryAfterSec", properties.getSendCooldownSeconds());
+        result.put("expiresInSec", properties.getCodeTtlSeconds());
+        if (seedEmail && properties.isDebugReturnCode()) {
+            result.put("debugCode", properties.getSeedEmailCode());
+        }
+        return result;
     }
 
     @Transactional
@@ -95,8 +102,10 @@ public class AuthCommandService {
         String effectiveClientVersion = clientVersion == null || clientVersion.isBlank() ? "chat-web" : clientVersion.trim();
         EmailCodeRecord current = codeStore.get(codeKey(effectiveAppId, normalizedEmail));
         OffsetDateTime now = OffsetDateTime.now();
+        boolean seedEmail = isSeedEmail(normalizedEmail);
 
-        if (current == null || current.expiresAt().isBefore(now) || !current.code().equals(code.trim())) {
+        boolean codeMatched = current != null && current.expiresAt().isAfter(now) && current.code().equals(code.trim());
+        if (!codeMatched && !(seedEmail && properties.getSeedEmailCode().equals(code.trim()))) {
             publishAuditEvent(requestId, properties.getDefaultTenantId(), effectiveAppId, "anonymous", "AUTH_LOGIN_FAILED", normalizedEmail, Map.of(
                     "reason", "INVALID_EMAIL_CODE"
             ));
@@ -197,6 +206,20 @@ public class AuthCommandService {
 
     private String codeKey(String appId, String email) {
         return appId + "|" + email;
+    }
+
+    private boolean isSeedEmail(String email) {
+        if (!properties.isDevSeedLoginEnabled()) {
+            return false;
+        }
+        String pattern = properties.getSeedEmailPattern();
+        String code = properties.getSeedEmailCode();
+        return email != null
+                && pattern != null
+                && !pattern.isBlank()
+                && code != null
+                && !code.isBlank()
+                && email.matches(pattern);
     }
 
     private String generateCode() {

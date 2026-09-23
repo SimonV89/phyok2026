@@ -7,8 +7,8 @@ import {
   ERROR_CODES,
   extractExternalHeaders
 } from "../../packages/contracts/api";
-
-type UploadAssetKind = "image" | "audio" | "document" | "other";
+import { saveUploadedAsset } from "./asset-store";
+import type { UploadAssetKind } from "./types";
 
 function inferAssetKind(mimeType: string): UploadAssetKind {
   if (mimeType.startsWith("image/")) {
@@ -50,12 +50,14 @@ export const mediaV2Routes = async (app: FastifyInstance) => {
     let scene = "chat";
     let conversationId = "";
     let fieldCount = 0;
+    let fileBuffer: Buffer | null = null;
 
     for await (const part of request.parts()) {
       if (part.type === "file") {
         fileName = part.filename || fileName || "upload.bin";
         mimeType = part.mimetype || mimeType;
         const buffer = await part.toBuffer();
+        fileBuffer = buffer;
         size += buffer.byteLength;
       } else {
         fieldCount += 1;
@@ -77,6 +79,23 @@ export const mediaV2Routes = async (app: FastifyInstance) => {
 
     const assetId = `asset_${randomUUID()}`;
     const taskId = `task_${randomUUID()}`;
+    const kind = inferAssetKind(mimeType);
+
+    if (kind === "image" && size > 3 * 1024 * 1024) {
+      await reply.code(400).send(
+        createFailure(externalHeaders.requestId, ERROR_CODES.BFF_BAD_REQUEST, "image file must be <= 3MB.")
+      );
+      return;
+    }
+
+    saveUploadedAsset({
+      assetId,
+      fileName,
+      mimeType,
+      size,
+      kind,
+      buffer: fileBuffer ?? Buffer.alloc(0)
+    });
 
     await reply.send(
       createSuccess(externalHeaders.requestId, {
@@ -84,13 +103,13 @@ export const mediaV2Routes = async (app: FastifyInstance) => {
         taskId,
         fileName,
         mimeType,
-        kind: inferAssetKind(mimeType),
+        kind,
         size,
         scene,
         conversationId: conversationId || null,
         fieldCount,
         status: "uploaded",
-        parseStatus: "queued",
+        parseStatus: kind === "other" ? "uploaded" : "ready_for_analysis",
         uploadedAt: Date.now()
       })
     );

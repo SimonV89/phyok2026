@@ -10,6 +10,7 @@ export type StreamEventName =
   | "tool.started"
   | "tool.completed"
   | "citation.appended"
+  | "risk.alerted"
   | "warning.raised"
   | "usage.reported"
   | "message.completed"
@@ -29,6 +30,13 @@ export type SseEventPayloadMap = {
     title: string;
     content: string;
     score?: number;
+  };
+  "risk.alerted": {
+    runId: string;
+    type: "self_harm" | "harm_others";
+    severity: "high" | "medium";
+    title: string;
+    message: string;
   };
   "warning.raised": { runId: string; message: string; code?: string };
   "usage.reported": { runId: string; inputChars: number; outputChars: number; attachmentCount: number };

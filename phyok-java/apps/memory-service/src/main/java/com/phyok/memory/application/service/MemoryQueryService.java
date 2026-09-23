@@ -5,18 +5,28 @@ import com.phyok.contracts.MemoryFragmentPageView;
 import com.phyok.contracts.MemoryFragmentView;
 import com.phyok.contracts.MemoryRecallHitView;
 import com.phyok.contracts.MemoryRetrievalPreviewView;
+import com.phyok.contracts.MemoryStarMapView;
 import com.phyok.memory.application.config.MemoryProperties;
 import com.phyok.memory.infrastructure.mybatis.entity.MemoryFragmentDO;
 import com.phyok.memory.infrastructure.repository.MemoryFragmentRepository;
 import org.springframework.stereotype.Service;
 
-import java.util.Locale;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.LinkedHashMap;
+import java.util.stream.Collectors;
 
 @Service
 public class MemoryQueryService {
     private static final Set<String> TIMELINE_ROOTS = Set.of("EARLY", "CHILDHOOD", "STUDENT", "WORK", "TODAY");
+    private static final List<String> TIMELINE_ORDER = List.of("EARLY", "CHILDHOOD", "STUDENT", "WORK", "TODAY");
+    private static final double PEER_LINK_THRESHOLD = 0.18d;
+    private static final int MAX_PEERS_PER_NODE = 2;
     private final MemoryProperties properties;
     private final MemoryFragmentRepository memoryFragmentRepository;
 
@@ -51,6 +61,119 @@ public class MemoryQueryService {
                 properties.isRerankEnabled(),
                 properties.getQdrantCollection(),
                 mapHits(fragments)
+        );
+    }
+
+    public MemoryStarMapView buildStarMap(
+            String tenantId,
+            String appId,
+            String userId,
+            String timelineRoot,
+            Integer limit
+    ) {
+        int safeLimit = Math.max(12, Math.min(limit == null ? 180 : limit, 260));
+        String normalizedTimelineRoot = normalizeTimelineRoot(timelineRoot);
+        List<MemoryFragmentDO> fragments = memoryFragmentRepository.findLatestSearchableFragments(
+                tenantId,
+                appId,
+                userId,
+                safeLimit
+        );
+        List<MemoryFragmentDO> filteredFragments = fragments.stream()
+                .filter(fragment -> normalizedTimelineRoot == null || normalizedTimelineRoot.equals(fragment.getTimelineRoot()))
+                .toList();
+
+        List<String> visibleRoots = normalizedTimelineRoot == null
+                ? TIMELINE_ORDER
+                : TIMELINE_ORDER.stream().filter(root -> root.equals(normalizedTimelineRoot)).toList();
+
+        List<MemoryStarMapView.Node> nodes = new ArrayList<>();
+        for (String root : visibleRoots) {
+            nodes.add(new MemoryStarMapView.Node(
+                    "root-" + root.toLowerCase(Locale.ROOT),
+                    "root",
+                    root,
+                    root,
+                    null,
+                    null,
+                    "memory-service",
+                    null,
+                    List.of(root),
+                    null
+            ));
+        }
+
+        int size = Math.max(filteredFragments.size(), 1);
+        for (int index = 0; index < filteredFragments.size(); index += 1) {
+            MemoryFragmentDO fragment = filteredFragments.get(index);
+            double score = Math.max(0.56d, 0.96d - ((double) index / (double) size) * 0.24d);
+            nodes.add(new MemoryStarMapView.Node(
+                    fragment.getId(),
+                    "memory",
+                    fragment.getTimelineRoot(),
+                    buildTitle(fragment.getContentText()),
+                    fragment.getContentText(),
+                    score,
+                    "memory-service",
+                    null,
+                    buildTags(fragment),
+                    fragment.getCreatedAt()
+            ));
+        }
+
+        List<MemoryStarMapView.Link> links = new ArrayList<>();
+        for (MemoryFragmentDO fragment : filteredFragments) {
+            links.add(new MemoryStarMapView.Link(
+                    "root-" + fragment.getTimelineRoot().toLowerCase(Locale.ROOT),
+                    fragment.getId(),
+                    "root",
+                    1.0d
+            ));
+        }
+
+        Map<String, List<MemoryFragmentDO>> groupedByTimeline = filteredFragments.stream()
+                .collect(Collectors.groupingBy(
+                        MemoryFragmentDO::getTimelineRoot,
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+        Set<String> existingPairs = new HashSet<>();
+        for (List<MemoryFragmentDO> timelineFragments : groupedByTimeline.values()) {
+            for (MemoryFragmentDO current : timelineFragments) {
+                List<PeerCandidate> candidates = new ArrayList<>();
+                for (MemoryFragmentDO candidate : timelineFragments) {
+                    if (current.getId().equals(candidate.getId())) {
+                        continue;
+                    }
+                    double similarity = computeSimilarity(current.getContentText(), candidate.getContentText());
+                    if (similarity > PEER_LINK_THRESHOLD) {
+                        candidates.add(new PeerCandidate(candidate, similarity));
+                    }
+                }
+                candidates.stream()
+                        .sorted(Comparator.comparingDouble(PeerCandidate::score).reversed())
+                        .limit(MAX_PEERS_PER_NODE)
+                        .forEach(candidate -> {
+                            String pairKey = buildPairKey(current.getId(), candidate.fragment().getId());
+                            if (!existingPairs.add(pairKey)) {
+                                return;
+                            }
+                            links.add(new MemoryStarMapView.Link(
+                                    current.getId(),
+                                    candidate.fragment().getId(),
+                                    "peer",
+                                    candidate.score()
+                            ));
+                        });
+            }
+        }
+
+        return new MemoryStarMapView(
+                normalizedTimelineRoot == null ? "all" : normalizedTimelineRoot.toLowerCase(Locale.ROOT),
+                safeLimit,
+                filteredFragments.size(),
+                nodes,
+                links
         );
     }
 
@@ -107,6 +230,58 @@ public class MemoryQueryService {
         );
     }
 
+    private List<String> buildTags(MemoryFragmentDO fragment) {
+        List<String> tags = new ArrayList<>();
+        tags.add(fragment.getTimelineRoot());
+        if (fragment.isSearchable()) {
+            tags.add("SEARCHABLE");
+        }
+        return tags;
+    }
+
+    private String buildPairKey(String left, String right) {
+        return left.compareTo(right) <= 0 ? left + "::" + right : right + "::" + left;
+    }
+
+    private double computeSimilarity(String left, String right) {
+        String normalizedLeft = normalizeForSimilarity(left);
+        String normalizedRight = normalizeForSimilarity(right);
+        if (normalizedLeft.isBlank() || normalizedRight.isBlank()) {
+            return 0d;
+        }
+        Set<String> leftTokens = toTokenSet(normalizedLeft);
+        Set<String> rightTokens = toTokenSet(normalizedRight);
+        if (leftTokens.isEmpty() || rightTokens.isEmpty()) {
+            return 0d;
+        }
+        int intersection = 0;
+        for (String token : leftTokens) {
+            if (rightTokens.contains(token)) {
+                intersection += 1;
+            }
+        }
+        return (double) intersection / (double) Math.max(leftTokens.size(), rightTokens.size());
+    }
+
+    private Set<String> toTokenSet(String normalized) {
+        Set<String> tokens = new HashSet<>();
+        for (int index = 0; index < normalized.length(); index += 1) {
+            tokens.add(String.valueOf(normalized.charAt(index)));
+            if (index + 1 < normalized.length()) {
+                tokens.add(normalized.substring(index, index + 2));
+            }
+        }
+        return tokens;
+    }
+
+    private String normalizeForSimilarity(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}\\u4e00-\\u9fa5]+", "");
+    }
+
     private String buildTitle(String contentText) {
         if (contentText == null || contentText.isBlank()) {
             return "未命名记忆碎片";
@@ -121,5 +296,8 @@ public class MemoryQueryService {
         }
         String normalized = timelineRoot.trim().toUpperCase(Locale.ROOT);
         return TIMELINE_ROOTS.contains(normalized) ? normalized : null;
+    }
+
+    private record PeerCandidate(MemoryFragmentDO fragment, double score) {
     }
 }

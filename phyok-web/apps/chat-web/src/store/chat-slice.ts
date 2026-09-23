@@ -14,6 +14,36 @@ export type InteractionAction = {
   prompt: string;
 };
 
+export type ToolStep = {
+  tool: string;
+  label: string;
+  status: "running" | "completed";
+};
+
+export type CitationItem = {
+  source: "memory_fragments" | "knowledge_base";
+  title: string;
+  content: string;
+  score?: number;
+};
+
+export type UsageSummary = {
+  inputChars: number;
+  outputChars: number;
+  attachmentCount: number;
+};
+
+export type WarningItem = {
+  message: string;
+};
+
+export type RiskAlert = {
+  type: "self_harm" | "harm_others";
+  severity: "high" | "medium";
+  title: string;
+  message: string;
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -21,6 +51,11 @@ export type ChatMessage = {
   createdAt: number;
   thinking?: string;
   actions?: InteractionAction[];
+  toolSteps?: ToolStep[];
+  citations?: CitationItem[];
+  usage?: UsageSummary;
+  warnings?: WarningItem[];
+  riskAlert?: RiskAlert;
   status?: "streaming" | "completed";
 };
 
@@ -74,6 +109,26 @@ export const chatSlice = createSlice({
   name: "chat",
   initialState,
   reducers: {
+    startFreshConversation(
+      state,
+      action: PayloadAction<{
+        conversationId: string;
+        composerText?: string;
+      }>
+    ) {
+      state.conversationId = action.payload.conversationId;
+      state.composerText = action.payload.composerText ?? "";
+      state.attachments = [];
+      state.messages = [];
+      state.stream = {
+        runId: null,
+        status: "idle",
+        assistantMessageId: null,
+        thinking: "",
+        lastSeq: 0,
+        errorMessage: null
+      };
+    },
     setComposerText(state, action: PayloadAction<string>) {
       state.composerText = action.payload;
     },
@@ -111,6 +166,8 @@ export const chatSlice = createSlice({
           createdAt: number;
           attachments?: AttachmentDraft[];
           status?: "streaming" | "completed";
+          thinking?: string;
+          actions?: InteractionAction[];
         }>;
       }>
     ) {
@@ -121,8 +178,11 @@ export const chatSlice = createSlice({
         text: formatMessageText(message.text, message.attachments),
         createdAt: message.createdAt,
         status: message.status ?? "completed",
-        actions: [],
-        thinking: message.role === "assistant" ? "" : undefined
+        actions: message.role === "assistant" ? (message.actions ?? []) : undefined,
+        toolSteps: message.role === "assistant" ? [] : undefined,
+        citations: message.role === "assistant" ? [] : undefined,
+        warnings: message.role === "assistant" ? [] : undefined,
+        thinking: message.role === "assistant" ? (message.thinking ?? "") : undefined
       }));
     },
     startAssistantRun(
@@ -145,6 +205,9 @@ export const chatSlice = createSlice({
           createdAt: Date.now(),
           thinking: "",
           actions: [],
+          toolSteps: [],
+          citations: [],
+          warnings: [],
           status: "streaming"
         });
       }
@@ -170,6 +233,67 @@ export const chatSlice = createSlice({
       if (message) {
         message.actions = action.payload;
       }
+    },
+    upsertToolStep(state, action: PayloadAction<ToolStep>) {
+      const message = findMessage(state, state.stream.assistantMessageId);
+      if (!message) {
+        return;
+      }
+      if (!message.toolSteps) {
+        message.toolSteps = [];
+      }
+      const current = message.toolSteps.find((item) => item.tool === action.payload.tool);
+      if (current) {
+        current.label = action.payload.label;
+        current.status = action.payload.status;
+        return;
+      }
+      message.toolSteps.push(action.payload);
+    },
+    appendCitation(state, action: PayloadAction<CitationItem>) {
+      const message = findMessage(state, state.stream.assistantMessageId);
+      if (!message) {
+        return;
+      }
+      if (!message.citations) {
+        message.citations = [];
+      }
+      message.citations.push(action.payload);
+    },
+    setUsageSummary(state, action: PayloadAction<UsageSummary>) {
+      const message = findMessage(state, state.stream.assistantMessageId);
+      if (message) {
+        message.usage = action.payload;
+      }
+    },
+    appendWarning(state, action: PayloadAction<WarningItem>) {
+      const message = findMessage(state, state.stream.assistantMessageId);
+      if (!message) {
+        return;
+      }
+      if (!message.warnings) {
+        message.warnings = [];
+      }
+      message.warnings.push(action.payload);
+    },
+    setRiskAlert(state, action: PayloadAction<RiskAlert>) {
+      const message = findMessage(state, state.stream.assistantMessageId);
+      if (message) {
+        message.riskAlert = action.payload;
+      }
+    },
+    finalizeAssistantMessage(
+      state,
+      action: PayloadAction<{ text: string; thinking: string; actions: InteractionAction[] }>
+    ) {
+      const message = findMessage(state, state.stream.assistantMessageId);
+      if (!message) {
+        return;
+      }
+      message.text = action.payload.text;
+      message.thinking = action.payload.thinking;
+      message.actions = action.payload.actions;
+      message.status = "completed";
     },
     hydrateRunState(
       state,
@@ -197,6 +321,9 @@ export const chatSlice = createSlice({
         message.text = action.payload.text;
         message.thinking = action.payload.thinking;
         message.actions = action.payload.actions;
+        message.toolSteps = message.toolSteps ?? [];
+        message.citations = message.citations ?? [];
+        message.warnings = message.warnings ?? [];
         message.status = action.payload.status === "completed" ? "completed" : "streaming";
       } else {
         state.messages.push({
@@ -206,6 +333,9 @@ export const chatSlice = createSlice({
           createdAt: Date.now(),
           thinking: action.payload.thinking,
           actions: action.payload.actions,
+          toolSteps: [],
+          citations: [],
+          warnings: [],
           status: action.payload.status === "completed" ? "completed" : "streaming"
         });
       }
@@ -238,18 +368,25 @@ export const chatSlice = createSlice({
 export const {
   addAttachments,
   appendAssistantDelta,
+  appendCitation,
   appendThinkingDelta,
+  appendWarning,
   appendUserMessage,
   clearComposer,
   completeRun,
   failRun,
+  finalizeAssistantMessage,
   hydrateRunState,
   replaceConversationMessages,
   removeAttachment,
+  startFreshConversation,
   setAssistantActions,
   setComposerText,
+  setRiskAlert,
+  setUsageSummary,
   startAssistantRun,
   stopRunLocally,
+  upsertToolStep,
   updateLastSeq
 } = chatSlice.actions;
 

@@ -17,9 +17,9 @@ function scoreFromQuery(query: string, seed: number): number {
 
 async function verifyToken(_ctx: GatewayContext): Promise<VerifiedIdentity> {
   return {
-    tenantId: "tenant_demo",
-    appId: "phyok_web",
-    userId: _ctx.userId || "guest_demo",
+    tenantId: "tenant_local",
+    appId: _ctx.appId || "phyok-chat-web",
+    userId: _ctx.userId || "guest_anonymous",
     roles: ["user"],
     sessionId: _ctx.sessionId
   };

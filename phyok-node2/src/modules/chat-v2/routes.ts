@@ -10,7 +10,9 @@ import {
 import {
   attachChatRunStream,
   createChatRun,
+  deleteConversationHistory,
   getConversationHistoryPage,
+  getConversationSummaryPage,
   getChatRunSnapshot,
   stopChatRun,
   type ChatV2Attachment
@@ -44,6 +46,16 @@ const historyQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional()
 });
 
+const conversationListQuerySchema = z.object({
+  pageNo: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(60).optional(),
+  keyword: z.string().trim().max(200).optional()
+});
+
+const conversationParamsSchema = z.object({
+  conversationId: z.string().trim().min(1)
+});
+
 const streamParamsSchema = z.object({
   runId: z.string().trim().min(1)
 });
@@ -73,6 +85,7 @@ function getStringHeader(headers: Record<string, unknown>, name: string): string
 export const chatV2Routes = async (app: FastifyInstance) => {
   app.post("/send", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const origin = getStringHeader(request.headers as Record<string, unknown>, "origin");
     const parsed = sendBodySchema.safeParse(request.body);
     if (!parsed.success) {
       await reply.code(400).send(
@@ -84,6 +97,7 @@ export const chatV2Routes = async (app: FastifyInstance) => {
     }
 
     const run = createChatRun({
+      authorization: externalHeaders.authorization,
       requestId: externalHeaders.requestId,
       traceId: externalHeaders.traceId,
       appId: externalHeaders.appId,
@@ -101,7 +115,8 @@ export const chatV2Routes = async (app: FastifyInstance) => {
       fromSeq: 0,
       headers: {
         "X-Request-Id": externalHeaders.requestId,
-        "X-App-Id": externalHeaders.appId
+        "X-App-Id": externalHeaders.appId,
+        ...(origin ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" } : {})
       }
     });
 
@@ -118,16 +133,19 @@ export const chatV2Routes = async (app: FastifyInstance) => {
       return;
     }
 
-    request.raw.once("close", () => {
+    const closeStream = () => {
       connection.close();
-    });
-    request.raw.once("aborted", () => {
-      connection.close();
-    });
+    };
+
+    // For POST + SSE, request "close" fires after the request body is consumed,
+    // which is too early and would tear down the response stream immediately.
+    request.raw.once("aborted", closeStream);
+    reply.raw.once("close", closeStream);
   });
 
   app.get("/stream/:runId", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const origin = getStringHeader(request.headers as Record<string, unknown>, "origin");
     const params = streamParamsSchema.safeParse(request.params);
     const query = fromSeqQuerySchema.safeParse(request.query);
     if (!params.success || !query.success) {
@@ -144,7 +162,8 @@ export const chatV2Routes = async (app: FastifyInstance) => {
       fromSeq: query.data.fromSeq,
       headers: {
         "X-Request-Id": externalHeaders.requestId,
-        "X-App-Id": externalHeaders.appId
+        "X-App-Id": externalHeaders.appId,
+        ...(origin ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" } : {})
       }
     });
     if (!connection.found) {
@@ -160,12 +179,12 @@ export const chatV2Routes = async (app: FastifyInstance) => {
       return;
     }
 
-    request.raw.once("close", () => {
+    const closeStream = () => {
       connection.close();
-    });
-    request.raw.once("aborted", () => {
-      connection.close();
-    });
+    };
+
+    request.raw.once("aborted", closeStream);
+    reply.raw.once("close", closeStream);
   });
 
   app.get("/state", async (request, reply) => {
@@ -213,6 +232,50 @@ export const chatV2Routes = async (app: FastifyInstance) => {
         limit: parsed.data.limit ?? 20
       })
     );
+  });
+
+  app.get("/history/conversations", async (request, reply) => {
+    const externalHeaders = extractExternalHeaders(request.headers);
+    const parsed = conversationListQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      await reply.code(400).send(
+        createFailure(externalHeaders.requestId, ERROR_CODES.BFF_BAD_REQUEST, "Invalid conversation list query.", {
+          issues: parsed.error.issues
+        })
+      );
+      return;
+    }
+
+    const page = getConversationSummaryPage({
+      pageNo: parsed.data.pageNo ?? 1,
+      pageSize: parsed.data.pageSize ?? 9,
+      keyword: parsed.data.keyword
+    });
+
+    await reply.send(createSuccess(externalHeaders.requestId, page));
+  });
+
+  app.delete("/history/conversations/:conversationId", async (request, reply) => {
+    const externalHeaders = extractExternalHeaders(request.headers);
+    const parsed = conversationParamsSchema.safeParse(request.params);
+    if (!parsed.success) {
+      await reply.code(400).send(
+        createFailure(externalHeaders.requestId, ERROR_CODES.BFF_BAD_REQUEST, "conversationId is required.", {
+          issues: parsed.error.issues
+        })
+      );
+      return;
+    }
+
+    const result = deleteConversationHistory(parsed.data.conversationId);
+    if (!result.deleted) {
+      await reply
+        .code(404)
+        .send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_RUN_NOT_FOUND, "Conversation not found."));
+      return;
+    }
+
+    await reply.send(createSuccess(externalHeaders.requestId, result));
   });
 
   app.post("/stop", async (request, reply) => {

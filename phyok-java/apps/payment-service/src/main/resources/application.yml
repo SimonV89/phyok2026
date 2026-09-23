@@ -1,5 +1,39 @@
 spring:
   application:
     name: payment-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:phyok}
+    username: ${POSTGRES_USER:phyok}
+    password: ${POSTGRES_PASSWORD:change_me_pg}
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    table: flyway_schema_history_payment
+    locations: classpath:db/migration
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.phyok.payment.infrastructure.mybatis.entity
+  configuration:
+    map-underscore-to-camel-case: true
 server:
   port: ${PAYMENT_PORT:18086}
+
+phyok:
+  payment:
+    app-base-url: ${APP_BASE_URL:https://www.phyok.com}
+    billing-base-url: ${JAVA_BILLING_BASE_URL:http://billing-service:18085}
+    alipay-enabled: ${ALIPAY_ENABLED:true}
+    alipay-app-id: ${ALIPAY_APP_ID:}
+    alipay-gateway: ${ALIPAY_GATEWAY:https://openapi.alipay.com/gateway.do}
+    alipay-app-private-key: ${ALIPAY_APP_PRIVATE_KEY:}
+    alipay-public-key: ${ALIPAY_PUBLIC_KEY:}
+    alipay-notify-path: ${ALIPAY_NOTIFY_PATH:/api/pay/alipay/notify}
+    alipay-return-path: ${ALIPAY_RETURN_PATH:/payment/result}
+    alipay-timeout-express: ${ALIPAY_TIMEOUT_EXPRESS:15m}
+    alipay-debug: ${ALIPAY_DEBUG:false}
+    alipay-charset: ${ALIPAY_CHARSET:utf-8}
+    alipay-sign-type: ${ALIPAY_SIGN_TYPE:RSA2}
+    alipay-version: ${ALIPAY_VERSION:1.0}
+    alipay-page-pay-method: ${ALIPAY_PAGE_PAY_METHOD:alipay.trade.page.pay}
+    seller-name: ${PAYMENT_SELLER_NAME:心理学空间}

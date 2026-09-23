@@ -78,6 +78,9 @@ export function buildClientHeaders(extra?: Record<string, string>): HeadersInit 
     "X-Client-Version": getClientVersion(),
     "X-Device-Id": getDeviceId(),
     ...(session?.sessionToken ? { Authorization: `Bearer ${session.sessionToken}` } : {}),
+    ...(session?.userId ? { "X-User-Id": session.userId } : {}),
+    ...(session?.sessionId ? { "X-Session-Id": session.sessionId } : {}),
+    ...(session?.email ? { "X-User-Email": session.email } : {}),
     ...(extra ?? {})
   };
 }

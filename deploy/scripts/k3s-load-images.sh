@@ -65,7 +65,12 @@ build_node_image() {
 
 build_web_image() {
   local image="ghcr.io/your-org/phyok-chat-web:latest"
+  local next_cache_dir="${ROOT_DIR}/phyok-web/apps/chat-web/.next"
   echo "Building Web image -> ${image}"
+  if [[ -d "${next_cache_dir}" ]]; then
+    echo "Cleaning Next.js cache at ${next_cache_dir}"
+    rm -rf "${next_cache_dir}"
+  fi
   docker build --progress="${DOCKER_BUILD_PROGRESS}" --build-arg NPM_REGISTRY="${NPM_REGISTRY}" -t "${image}" "${ROOT_DIR}/phyok-web/apps/chat-web"
   import_image "${image}"
 }

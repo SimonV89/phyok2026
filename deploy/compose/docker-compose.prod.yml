@@ -29,6 +29,8 @@ services:
       dockerfile: Dockerfile
     container_name: phyok-node2-runtime
     restart: unless-stopped
+    env_file:
+      - ../../env2
     depends_on:
       auth-service:
         condition: service_started
@@ -238,6 +240,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_started
+    env_file:
+      - ../../env2
     environment: *java_db_env
     ports:
       - "${PAYMENT_PORT:-18086}:18086"

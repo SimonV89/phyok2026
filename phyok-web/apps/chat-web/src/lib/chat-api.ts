@@ -1,13 +1,38 @@
-import type { AttachmentDraft, InteractionAction } from "@/store/chat-slice";
+import type { AttachmentDraft, InteractionAction, RiskAlert } from "@/store/chat-slice";
 import { buildClientHeaders, getAppId } from "@/lib/auth-session";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+
+function buildApiPath(path: string): string {
+  return API_BASE ? `${API_BASE}${path}` : path;
+}
+
+function buildApiUrl(path: string): URL {
+  if (API_BASE) {
+    return new URL(path, API_BASE.endsWith("/") ? API_BASE : `${API_BASE}/`);
+  }
+  if (typeof window !== "undefined") {
+    return new URL(path, window.location.origin);
+  }
+  return new URL(path, "http://127.0.0.1");
+}
 
 export type ChatStreamEvent =
   | { event: "message.started"; data: { seq: number; runId: string; conversationId: string; createdAt: number } }
   | { event: "tool.started" | "tool.completed"; data: { seq: number; runId: string; tool: string; label: string } }
   | { event: "thinking.delta"; data: { seq: number; runId: string; delta: string } }
   | { event: "message.delta"; data: { seq: number; runId: string; delta: string } }
+  | {
+      event: "citation.appended";
+      data: {
+        seq: number;
+        runId: string;
+        source: "memory_fragments" | "knowledge_base";
+        title: string;
+        content: string;
+        score?: number;
+      };
+    }
   | {
       event: "interaction.required";
       data: { seq: number; runId: string; title: string; description: string; actions: InteractionAction[] };
@@ -16,8 +41,12 @@ export type ChatStreamEvent =
       event: "usage.reported";
       data: { seq: number; runId: string; inputChars: number; outputChars: number; attachmentCount: number };
     }
+  | { event: "risk.alerted"; data: { seq: number; runId: string } & RiskAlert }
   | { event: "warning.raised" | "stream.failed"; data: { seq: number; runId: string; message: string } }
-  | { event: "message.completed"; data: { seq: number; runId: string; message: string; thinking: string } }
+  | {
+      event: "message.completed";
+      data: { seq: number; runId: string; message: string; thinking: string; actions: InteractionAction[] };
+    }
   | { event: "stream.completed"; data: { seq: number; runId: string; status: string } }
   | { event: "heartbeat"; data: { runId: string; ts: number } };
 
@@ -50,6 +79,8 @@ export type HistoryItemResponse = {
   status: string;
   createdAt: number;
   attachments: AttachmentDraft[];
+  thinking?: string;
+  actions?: InteractionAction[];
 };
 
 export type HistoryResponse = {
@@ -63,6 +94,32 @@ export type HistoryResponse = {
     hasNext: boolean;
     total: number;
     limit: number;
+  };
+};
+
+export type ConversationHistorySummary = {
+  conversationId: string;
+  latestRunId: string;
+  title: string;
+  latestPreview: string;
+  latestUserMessage: string;
+  latestAssistantMessage: string;
+  status: string;
+  attachmentCount: number;
+  turnCount: number;
+  startedAt: number;
+  updatedAt: number;
+};
+
+export type ConversationSummaryPageResponse = {
+  code: string;
+  message: string;
+  requestId: string;
+  data: {
+    pageNo: number;
+    pageSize: number;
+    total: number;
+    items: ConversationHistorySummary[];
   };
 };
 
@@ -94,6 +151,7 @@ export type SendCodeResponse = {
     ticket?: string;
     retryAfterSec?: number;
     expiresInSec?: number;
+    debugCode?: string;
   };
 };
 
@@ -127,6 +185,49 @@ export type BillingAccountResponse = {
     remainingTokens: number;
     quotaState: string;
     billingStatus: string;
+    paymentChannel?: string;
+    seedUser?: boolean;
+    recommendedPlanId?: string;
+  };
+};
+
+export type BillingPlanItem = {
+  id: string;
+  name: string;
+  priceFen: number;
+  quota: number;
+  description: string;
+  highlight?: string;
+  recommended?: boolean;
+};
+
+export type BillingPlansResponse = {
+  code: string;
+  message: string;
+  requestId: string;
+  data: {
+    paymentChannel: string;
+    items: BillingPlanItem[];
+  };
+};
+
+export type CreateAlipayOrderResponse = {
+  code: string;
+  message: string;
+  requestId: string;
+  data: {
+    orderNo: string;
+    planId: string;
+    amountFen: number;
+    quota?: number;
+    status?: string;
+    paymentChannel: string;
+    payUrl: string;
+    qrCodeUrl: string;
+    qrCodeContent?: string;
+    expiresAt: string;
+    tradeNo?: string;
+    paidAt?: string;
   };
 };
 
@@ -154,6 +255,39 @@ export type AuditEventPageResponse = {
     pageSize: number;
     total: number;
     items: AuditEventResponse[];
+  };
+};
+
+export type MemoryStarMapNode = {
+  id: string;
+  type: "root" | "memory";
+  timelineRoot: "EARLY" | "CHILDHOOD" | "STUDENT" | "WORK" | "TODAY";
+  label: string;
+  contentText: string | null;
+  score: number | null;
+  sourceType: string;
+  conversationId: string | null;
+  tags: string[];
+  createdAt: string | null;
+};
+
+export type MemoryStarMapLink = {
+  source: string;
+  target: string;
+  type: "root" | "peer";
+  score: number | null;
+};
+
+export type MemoryStarMapResponse = {
+  code: string;
+  message: string;
+  requestId: string;
+  data: {
+    view: string;
+    limit: number;
+    totalMemories: number;
+    nodes: MemoryStarMapNode[];
+    links: MemoryStarMapLink[];
   };
 };
 
@@ -216,7 +350,7 @@ export async function uploadMedia(file: File, options?: { conversationId?: strin
     formData.append("conversationId", options.conversationId);
   }
 
-  const response = await fetch(`${API_BASE}/v2/media/upload`, {
+  const response = await fetch(buildApiPath("/v2/media/upload"), {
     method: "POST",
     headers: buildClientHeaders(),
     body: formData
@@ -292,10 +426,11 @@ export async function streamNewRun(options: {
   onEvent: (event: ChatStreamEvent) => void;
   signal?: AbortSignal;
 }) {
-  const response = await fetch(`${API_BASE}/v2/chat/send`, {
+  const response = await fetch(buildApiPath("/v2/chat/send"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Accept: "text/event-stream",
       ...buildClientHeaders()
     },
     body: JSON.stringify({
@@ -315,7 +450,7 @@ export async function reconnectRun(options: {
   onEvent: (event: ChatStreamEvent) => void;
   signal?: AbortSignal;
 }) {
-  const response = await fetch(`${API_BASE}/v2/chat/stream/${options.runId}?fromSeq=${options.fromSeq}`, {
+  const response = await fetch(buildApiPath(`/v2/chat/stream/${options.runId}?fromSeq=${options.fromSeq}`), {
     method: "GET",
     headers: {
       Accept: "text/event-stream",
@@ -328,7 +463,7 @@ export async function reconnectRun(options: {
 }
 
 export async function fetchRunState(runId: string): Promise<RunStateResponse["data"]> {
-  const response = await fetch(`${API_BASE}/v2/chat/state?runId=${encodeURIComponent(runId)}`, {
+  const response = await fetch(buildApiPath(`/v2/chat/state?runId=${encodeURIComponent(runId)}`), {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -344,7 +479,7 @@ export async function fetchRunState(runId: string): Promise<RunStateResponse["da
 }
 
 export async function stopRun(runId: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/v2/chat/stop`, {
+  const response = await fetch(buildApiPath("/v2/chat/stop"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -362,7 +497,7 @@ export async function fetchConversationHistory(options: {
   cursor?: string;
   limit?: number;
 }): Promise<HistoryResponse["data"]> {
-  const url = new URL(`${API_BASE}/v2/chat/history`);
+  const url = buildApiUrl("/v2/chat/history");
   url.searchParams.set("conversationId", options.conversationId);
   if (options.cursor) {
     url.searchParams.set("cursor", options.cursor);
@@ -385,8 +520,49 @@ export async function fetchConversationHistory(options: {
   return payload.data;
 }
 
+export async function fetchConversationSummaries(options?: {
+  pageNo?: number;
+  pageSize?: number;
+  keyword?: string;
+}): Promise<ConversationSummaryPageResponse["data"]> {
+  const url = buildApiUrl("/v2/chat/history/conversations");
+  url.searchParams.set("pageNo", String(options?.pageNo ?? 1));
+  url.searchParams.set("pageSize", String(options?.pageSize ?? 9));
+  if (options?.keyword?.trim()) {
+    url.searchParams.set("keyword", options.keyword.trim());
+  }
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      ...buildClientHeaders()
+    },
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+
+  const payload = (await response.json()) as ConversationSummaryPageResponse;
+  return payload.data;
+}
+
+export async function deleteConversationHistory(conversationId: string): Promise<void> {
+  const response = await fetch(buildApiPath(`/v2/chat/history/conversations/${encodeURIComponent(conversationId)}`), {
+    method: "DELETE",
+    headers: {
+      Accept: "application/json",
+      ...buildClientHeaders()
+    }
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+}
+
 export async function sendEmailCode(email: string, locale = "zh-CN"): Promise<SendCodeResponse["data"]> {
-  const response = await fetch(`${API_BASE}/v2/auth/email/send-code`, {
+  const response = await fetch(buildApiPath("/v2/auth/email/send-code"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -402,7 +578,7 @@ export async function sendEmailCode(email: string, locale = "zh-CN"): Promise<Se
 }
 
 export async function verifyEmailCode(email: string, code: string): Promise<VerifyCodeResponse["data"]> {
-  const response = await fetch(`${API_BASE}/v2/auth/email/verify`, {
+  const response = await fetch(buildApiPath("/v2/auth/email/verify"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -420,7 +596,7 @@ export async function verifyEmailCode(email: string, code: string): Promise<Veri
 }
 
 export async function fetchBillingAccount(): Promise<BillingAccountResponse["data"]> {
-  const response = await fetch(`${API_BASE}/v2/billing/account`, {
+  const response = await fetch(buildApiPath("/v2/billing/account"), {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -435,13 +611,67 @@ export async function fetchBillingAccount(): Promise<BillingAccountResponse["dat
   return payload.data;
 }
 
+export async function fetchBillingPlans(): Promise<BillingPlansResponse["data"]> {
+  const response = await fetch(buildApiPath("/v2/billing/plans"), {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      ...buildClientHeaders()
+    },
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+  const payload = (await response.json()) as BillingPlansResponse;
+  return payload.data;
+}
+
+export async function createAlipayOrder(planId: string): Promise<CreateAlipayOrderResponse["data"]> {
+  const response = await fetch(buildApiPath("/v2/payments/alipay/create"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...buildClientHeaders()
+    },
+    body: JSON.stringify({
+      planId
+    })
+  });
+  const payload = (await response.json()) as CreateAlipayOrderResponse | ApiFailureResponse;
+  if (!response.ok || payload.code !== "OK") {
+    throw new Error("message" in payload ? payload.message : "创建支付宝订单失败。");
+  }
+  return (payload as CreateAlipayOrderResponse).data;
+}
+
+export async function fetchPaymentOrder(orderNo: string, options?: { refresh?: boolean }): Promise<CreateAlipayOrderResponse["data"]> {
+  const url = buildApiUrl(`/v2/payments/orders/${encodeURIComponent(orderNo)}`);
+  if (options?.refresh) {
+    url.searchParams.set("refresh", "true");
+  }
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      ...buildClientHeaders()
+    },
+    cache: "no-store"
+  });
+  const payload = (await response.json()) as CreateAlipayOrderResponse | ApiFailureResponse;
+  if (!response.ok || payload.code !== "OK") {
+    throw new Error("message" in payload ? payload.message : "查询支付宝订单失败。");
+  }
+  return (payload as CreateAlipayOrderResponse).data;
+}
+
 export async function fetchAuditEvents(options?: {
   userId?: string;
   appId?: string;
   pageNo?: number;
   pageSize?: number;
 }): Promise<AuditEventPageResponse["data"]> {
-  const url = new URL(`${API_BASE}/v2/audits/events/search`);
+  const url = buildApiUrl("/v2/audits/events/search");
   url.searchParams.set("appId", options?.appId ?? getAppId());
   if (options?.userId) {
     url.searchParams.set("userId", options.userId);
@@ -461,5 +691,36 @@ export async function fetchAuditEvents(options?: {
     throw new Error(await readErrorMessage(response));
   }
   const payload = (await response.json()) as AuditEventPageResponse;
+  return payload.data;
+}
+
+export async function fetchMemoryStarMap(options?: {
+  timelineRoot?: "EARLY" | "CHILDHOOD" | "STUDENT" | "WORK" | "TODAY";
+  limit?: number;
+  userId?: string;
+  appId?: string;
+}): Promise<MemoryStarMapResponse["data"]> {
+  const url = buildApiUrl("/v2/memories/star-map");
+  if (options?.timelineRoot) {
+    url.searchParams.set("timelineRoot", options.timelineRoot);
+  }
+  url.searchParams.set("limit", String(options?.limit ?? 180));
+  if (options?.userId) {
+    url.searchParams.set("userId", options.userId);
+  }
+  url.searchParams.set("appId", options?.appId ?? getAppId());
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      ...buildClientHeaders()
+    },
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+  const payload = (await response.json()) as MemoryStarMapResponse;
   return payload.data;
 }

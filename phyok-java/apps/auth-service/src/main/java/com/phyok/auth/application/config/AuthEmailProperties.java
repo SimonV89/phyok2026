@@ -47,6 +47,18 @@ public class AuthEmailProperties {
     @Value("${AUDIT_INTERNAL_BASE_URL:http://audit-service:18087}")
     private String auditBaseUrl;
 
+    @Value("${ENABLE_DEV_SEED_LOGIN:false}")
+    private boolean devSeedLoginEnabled;
+
+    @Value("${AUTH_SEED_EMAIL_PATTERN:}")
+    private String seedEmailPattern;
+
+    @Value("${AUTH_SEED_EMAIL_CODE:}")
+    private String seedEmailCode;
+
+    @Value("${AUTH_DEBUG_RETURN_CODE:false}")
+    private boolean debugReturnCode;
+
     public String getDefaultTenantId() {
         return defaultTenantId;
     }
@@ -101,5 +113,21 @@ public class AuthEmailProperties {
 
     public String getAuditBaseUrl() {
         return auditBaseUrl;
+    }
+
+    public boolean isDevSeedLoginEnabled() {
+        return devSeedLoginEnabled;
+    }
+
+    public String getSeedEmailPattern() {
+        return seedEmailPattern;
+    }
+
+    public String getSeedEmailCode() {
+        return seedEmailCode;
+    }
+
+    public boolean isDebugReturnCode() {
+        return debugReturnCode;
     }
 }
