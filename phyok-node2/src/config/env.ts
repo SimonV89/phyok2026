@@ -110,6 +110,7 @@ export const env = {
   javaBillingBaseUrl: process.env.JAVA_BILLING_BASE_URL ?? "http://127.0.0.1:18085",
   javaPaymentBaseUrl: process.env.JAVA_PAYMENT_BASE_URL ?? "http://127.0.0.1:18086",
   javaAuditBaseUrl: process.env.JAVA_AUDIT_BASE_URL ?? "http://127.0.0.1:18087",
+  javaDomainTimeoutMs: readInt(process.env.JAVA_DOMAIN_TIMEOUT_MS, 15000),
   memoryTransport: process.env.MEMORY_TRANSPORT === "grpc" ? "grpc" : "http",
   siliconFlowApiKey: process.env.SILICONFLOW_API_KEY ?? "",
   siliconFlowBaseUrl: trimTrailingSlash(process.env.SILICONFLOW_BASE_URL, "https://api.siliconflow.cn/v1"),

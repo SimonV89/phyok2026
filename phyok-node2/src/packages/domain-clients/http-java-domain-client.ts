@@ -172,22 +172,40 @@ export class HttpJavaDomainClient implements DomainClients {
       }
     }
 
-    const response = await fetch(url, {
-      method: options.method,
-      headers: {
-        "Content-Type": "application/json",
-        "X-Request-Id": internalHeaders.requestId,
-        "X-Trace-Id": internalHeaders.traceId,
-        "X-App-Id": internalHeaders.appId,
-        "X-User-Id": internalHeaders.userId,
-        "X-Session-Id": internalHeaders.sessionId,
-        "X-Caller-Service": internalHeaders.callerService,
-        ...(internalHeaders.tenantId ? { "X-Tenant-Id": internalHeaders.tenantId } : {}),
-        ...(internalHeaders.authorization ? { Authorization: internalHeaders.authorization } : {}),
-        ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {})
-      },
-      body: options.method === "GET" ? undefined : JSON.stringify(options.body ?? {})
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort(new Error(`JAVA_DOMAIN_TIMEOUT: ${options.path}`));
+    }, env.javaDomainTimeoutMs);
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: options.method,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Request-Id": internalHeaders.requestId,
+          "X-Trace-Id": internalHeaders.traceId,
+          "X-App-Id": internalHeaders.appId,
+          "X-User-Id": internalHeaders.userId,
+          "X-Session-Id": internalHeaders.sessionId,
+          "X-Caller-Service": internalHeaders.callerService,
+          ...(internalHeaders.tenantId ? { "X-Tenant-Id": internalHeaders.tenantId } : {}),
+          ...(internalHeaders.authorization ? { Authorization: internalHeaders.authorization } : {}),
+          ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {})
+        },
+        body: options.method === "GET" ? undefined : JSON.stringify(options.body ?? {}),
+        signal: controller.signal
+      });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        const reason = controller.signal.reason;
+        const timeoutMessage = reason instanceof Error ? reason.message : `JAVA_DOMAIN_TIMEOUT: ${options.path}`;
+        throw new Error(timeoutMessage);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     const payload = (await response.json()) as JsonEnvelope<T>;
     if (!response.ok || payload.code !== "OK") {

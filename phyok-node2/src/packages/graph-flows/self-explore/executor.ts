@@ -517,6 +517,16 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
     input.emit("tool.completed", { runId: state.runId, tool, label: `${label}完成` });
   };
 
+  input.emit("message.started", {
+    runId: state.runId,
+    conversationId: state.conversationId,
+    createdAt: Date.now()
+  });
+  input.emit("thinking.delta", {
+    runId: state.runId,
+    delta: "正在建立会话并校验上下文，请稍候...\n"
+  });
+
   const identity = await domainClients.verifyToken(activeContext);
   activeContext = {
     ...activeContext,
@@ -527,12 +537,6 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
   };
   await domainClients.emitAuditTrace(activeContext, "start");
   await domainClients.precheckBilling(activeContext);
-
-  input.emit("message.started", {
-    runId: state.runId,
-    conversationId: state.conversationId,
-    createdAt: Date.now()
-  });
 
   await emitTool("parse_multimodal", "多模态入口预处理", async () => {
     if (state.attachments.length === 0) {
