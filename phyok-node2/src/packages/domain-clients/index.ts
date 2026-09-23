@@ -19,10 +19,11 @@ function createDomainClients(): DomainClients {
 
     const hybridHttpClient: DomainClients = {
       verifyToken: (ctx) => httpClient.verifyToken(ctx),
-      getMemoryGate: (ctx, query) => mockClient.getMemoryGate(ctx, query),
-      recallMemory: (query, ctx) => mockClient.recallMemory(query, ctx),
+      getMemoryGate: (ctx, query) => httpClient.getMemoryGate(ctx, query),
+      recallMemory: (query, ctx) => httpClient.recallMemory(query, ctx),
       recallKnowledge: (query, ctx) => mockClient.recallKnowledge(query, ctx),
       upsertMemoryPlan: (query, ctx) => mockClient.upsertMemoryPlan(query, ctx),
+      createMemoryFragment: (input, ctx) => httpClient.createMemoryFragment(input, ctx),
       emitAuditTrace: (ctx, phase) => httpClient.emitAuditTrace(ctx, phase),
       precheckBilling: (ctx) => httpClient.precheckBilling(ctx)
     };

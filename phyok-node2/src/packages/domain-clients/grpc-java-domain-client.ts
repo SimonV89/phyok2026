@@ -77,6 +77,13 @@ export class GrpcJavaDomainClient implements DomainClients {
     return this.options.fallback.upsertMemoryPlan(query, ctx);
   }
 
+  async createMemoryFragment(
+    input: { contentText: string; timelineRoot?: string; searchable?: boolean },
+    ctx: GatewayContext
+  ): Promise<Record<string, unknown>> {
+    return this.options.fallback.createMemoryFragment(input, ctx);
+  }
+
   async emitAuditTrace(ctx: GatewayContext, phase: "start" | "complete" | "error"): Promise<void> {
     return this.options.fallback.emitAuditTrace(ctx, phase);
   }

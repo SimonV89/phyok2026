@@ -41,6 +41,10 @@ export type DomainClients = {
   recallMemory(query: string, ctx: GatewayContext): Promise<MemoryFragment[]>;
   recallKnowledge(query: string, ctx: GatewayContext): Promise<KnowledgeSnippet[]>;
   upsertMemoryPlan(query: string, ctx: GatewayContext): Promise<Record<string, unknown>>;
+  createMemoryFragment(
+    input: { contentText: string; timelineRoot?: string; searchable?: boolean },
+    ctx: GatewayContext
+  ): Promise<Record<string, unknown>>;
   emitAuditTrace(ctx: GatewayContext, phase: AuditTracePhase): Promise<void>;
   precheckBilling(ctx: GatewayContext): Promise<BillingPrecheckResult>;
 };

@@ -102,6 +102,18 @@ button {
   gap: 10px;
 }
 
+.toolbar-mobile-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.toolbar-mobile-shortcuts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -144,6 +156,7 @@ button {
 }
 
 .toolbar-login,
+.toolbar-quick-action,
 .toolbar-drawer-toggle,
 .stop-button,
 .message-actions button,
@@ -165,7 +178,27 @@ button {
   font-weight: 600;
 }
 
+.toolbar-quick-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .toolbar-login.icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.toolbar-quick-action.icon-only {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -234,6 +267,7 @@ button {
 }
 
 .toolbar-login:hover,
+.toolbar-quick-action:hover,
 .toolbar-drawer-toggle:hover,
 .stop-button:hover,
 .message-actions button:hover,
@@ -442,6 +476,11 @@ button {
 .sidebar-mobile-footer {
   margin-top: auto;
   padding-top: 6px;
+}
+
+.sidebar-mobile-actions {
+  display: grid;
+  gap: 8px;
 }
 
 .sidebar-bottom-meta {
@@ -2038,6 +2077,13 @@ button {
   gap: 12px;
 }
 
+.login-send-code-button,
+.login-secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .login-hint {
   color: var(--text-soft);
   font-size: 13px;
@@ -2392,6 +2438,19 @@ button {
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
+.memory-map-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  transform-origin: 0 0;
+  touch-action: none;
+  cursor: grab;
+}
+
+.memory-map-canvas:active {
+  cursor: grabbing;
+}
+
 .memory-map-toolbar {
   position: absolute;
   left: 24px;
@@ -2451,9 +2510,9 @@ button {
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  width: 84px;
-  min-height: 86px;
+  gap: 6px;
+  width: 72px;
+  min-height: 72px;
   border: none;
   background: transparent;
   --memory-tint: #64748b;
@@ -2470,8 +2529,8 @@ button {
 }
 
 .memory-map-node.memory {
-  width: 112px;
-  min-height: 96px;
+  width: 92px;
+  min-height: 78px;
 }
 
 .memory-map-node.related .memory-map-node-shell {
@@ -2491,9 +2550,9 @@ button {
 
 .memory-map-node-halo {
   position: absolute;
-  top: 6px;
-  width: 72px;
-  height: 72px;
+  top: 4px;
+  width: 60px;
+  height: 60px;
   border-radius: 999px;
   background:
     radial-gradient(circle at center, var(--memory-glow), transparent 68%);
@@ -2504,10 +2563,10 @@ button {
 }
 
 .memory-map-node.memory .memory-map-node-halo {
-  top: 8px;
-  width: 58px;
-  height: 58px;
-  filter: blur(8px);
+  top: 5px;
+  width: 44px;
+  height: 44px;
+  filter: blur(7px);
 }
 
 .memory-map-node-shell {
@@ -2515,8 +2574,8 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
+  width: 52px;
+  height: 52px;
   border-radius: 999px;
   border: 1px solid var(--memory-ring);
   background:
@@ -2533,8 +2592,8 @@ button {
 }
 
 .memory-map-node.memory .memory-map-node-shell {
-  width: 46px;
-  height: 46px;
+  width: 36px;
+  height: 36px;
 }
 
 .memory-map-node-core {
@@ -2542,8 +2601,8 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 34px;
+  height: 34px;
   border-radius: 999px;
   background:
     radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.4) 42%, transparent 68%),
@@ -2556,19 +2615,19 @@ button {
 }
 
 .memory-map-node.memory .memory-map-node-core {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
 }
 
 .memory-map-node-emoji {
   position: relative;
   z-index: 1;
-  font-size: 18px;
+  font-size: 15px;
   line-height: 1;
 }
 
 .memory-map-node.memory .memory-map-node-emoji {
-  font-size: 14px;
+  font-size: 11px;
 }
 
 .memory-map-node-label-group {
@@ -2582,17 +2641,16 @@ button {
 .memory-map-node-label {
   max-width: 100%;
   color: rgba(60, 45, 39, 0.9);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   line-height: 1.1;
   white-space: nowrap;
-  text-transform: uppercase;
 }
 
 .memory-map-node.memory .memory-map-node-label {
   color: var(--text-soft);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.01em;
   text-transform: none;
@@ -2600,7 +2658,7 @@ button {
 
 .memory-map-node-subtitle {
   color: rgba(111, 98, 92, 0.72);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
@@ -2608,19 +2666,19 @@ button {
 
 .memory-map-node-badge {
   position: absolute;
-  top: 2px;
-  right: 10px;
+  top: 0;
+  right: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.82);
   background: color-mix(in srgb, var(--memory-tint) 84%, white);
   color: #fff;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
   box-shadow: 0 8px 18px rgba(80, 42, 28, 0.14);
 }
@@ -2685,8 +2743,7 @@ button {
   color: rgba(111, 98, 92, 0.2);
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  letter-spacing: 0.12em;
 }
 
 .memory-map-loading,
@@ -2883,6 +2940,12 @@ button {
     padding-inline: 10px;
   }
 
+  .toolbar-quick-action.icon-only {
+    width: 36px;
+    min-width: 36px;
+    min-height: 36px;
+  }
+
   .toolbar-drawer-copy strong {
     font-size: 10.5px;
   }
@@ -2893,6 +2956,11 @@ button {
 
   .toolbar-login {
     display: none;
+  }
+
+  .login-send-code-button,
+  .login-secondary-action {
+    display: inline-flex;
   }
 
   .toolbar-slogan {
@@ -3155,6 +3223,14 @@ button {
     flex-direction: row;
   }
 
+  .toolbar-mobile-actions {
+    gap: 7px;
+  }
+
+  .toolbar-mobile-shortcuts {
+    gap: 7px;
+  }
+
   .brand-title {
     font-size: 15px;
   }
@@ -3320,6 +3396,11 @@ button {
   .login-actions {
     grid-template-columns: 1fr;
     flex-direction: column;
+  }
+
+  .login-send-code-button,
+  .login-secondary-action {
+    width: 100%;
   }
 }
 

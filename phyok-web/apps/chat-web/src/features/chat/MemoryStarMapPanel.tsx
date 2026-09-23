@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchMemoryStarMap, type MemoryStarMapResponse } from "@/lib/chat-api";
@@ -34,6 +34,7 @@ type MemoryLink = {
 type MemoryStarMapPanelProps = {
   currentConversationId: string | null;
   currentUserId?: string | null;
+  refreshKey?: number;
   onOpenConversation?: (conversationId: string) => void | Promise<void>;
 };
 
@@ -47,11 +48,11 @@ const VIEW_LABELS: Record<MemoryMapView, string> = {
   today: "当下"
 };
 const ROOT_LABELS: Record<TimelineKey, string> = {
-  early: "EARLY",
-  childhood: "CHILDHOOD",
-  student: "STUDENT",
-  work: "WORK",
-  current: "TODAY"
+  early: "幼年",
+  childhood: "童年",
+  student: "学生",
+  work: "工作",
+  current: "当下"
 };
 const TIMELINE_COLORS: Record<TimelineKey, string> = {
   early: "#f59e0b",
@@ -62,6 +63,13 @@ const TIMELINE_COLORS: Record<TimelineKey, string> = {
 };
 const STAR_EMOJIS = ["✨", "💫", "🌠", "☄️", "🔆"];
 const PLANET_EMOJI = "🪐";
+const MIN_SCALE = 0.72;
+const MAX_SCALE = 1.84;
+const INITIAL_CAMERA = { scale: 1, x: 0, y: 0 };
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 function hashText(text: string): number {
   let hash = 0;
@@ -388,14 +396,35 @@ function formatMemoryTime(timestamp?: number | null): string | null {
 export function MemoryStarMapPanel({
   currentConversationId,
   currentUserId,
+  refreshKey = 0,
   onOpenConversation
 }: MemoryStarMapPanelProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const dragPointerIdRef = useRef<number | null>(null);
+  const dragOriginRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
+  const touchGestureRef = useRef<
+    | {
+        mode: "pan";
+        startX: number;
+        startY: number;
+        originX: number;
+        originY: number;
+      }
+    | {
+        mode: "pinch";
+        startDistance: number;
+        startScale: number;
+        startCenterX: number;
+        startCenterY: number;
+      }
+    | null
+  >(null);
   const [viewKey, setViewKey] = useState<MemoryMapView>("all");
   const [use3d, setUse3d] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [viewport, setViewport] = useState({ width: 960, height: 620 });
+  const [camera, setCamera] = useState(INITIAL_CAMERA);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [graphData, setGraphData] = useState<MemoryStarMapResponse["data"] | null>(null);
@@ -450,7 +479,7 @@ export function MemoryStarMapPanel({
     return () => {
       active = false;
     };
-  }, [currentUserId, viewKey]);
+  }, [currentConversationId, currentUserId, refreshKey, viewKey]);
 
   const graph = useMemo(() => mapGraph(graphData), [graphData]);
   const positionedNodes = useMemo(
@@ -495,6 +524,152 @@ export function MemoryStarMapPanel({
 
   const memoryNodes = positionedNodes.filter((node) => node.kind === "memory");
   const summaryText = loading ? "正在编织记忆星图…" : `${graph.totalMemories} 条记忆 · ${peerLinks.length} 条相似度连边`;
+  const canvasStyle = useMemo(
+    () =>
+      ({
+        transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.scale})`
+      }) as CSSProperties,
+    [camera.scale, camera.x, camera.y]
+  );
+
+  const updateCamera = (next: Partial<typeof INITIAL_CAMERA>) => {
+    setCamera((current) => ({
+      scale: next.scale == null ? current.scale : clamp(next.scale, MIN_SCALE, MAX_SCALE),
+      x: next.x == null ? current.x : next.x,
+      y: next.y == null ? current.y : next.y
+    }));
+  };
+
+  const zoomAtPoint = (nextScaleRaw: number, clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    const nextScale = clamp(nextScaleRaw, MIN_SCALE, MAX_SCALE);
+    setCamera((current) => {
+      if (!rect) {
+        return { ...current, scale: nextScale };
+      }
+      const localX = clientX - rect.left;
+      const localY = clientY - rect.top;
+      const worldX = (localX - current.x) / current.scale;
+      const worldY = (localY - current.y) / current.scale;
+      return {
+        scale: nextScale,
+        x: localX - worldX * nextScale,
+        y: localY - worldY * nextScale
+      };
+    });
+  };
+
+  const handleCanvasPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest(".memory-map-node, .memory-map-toolbar, .memory-map-status, .memory-map-detail")) {
+      return;
+    }
+    dragPointerIdRef.current = event.pointerId;
+    dragOriginRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      startX: camera.x,
+      startY: camera.y
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleCanvasPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragPointerIdRef.current !== event.pointerId || !dragOriginRef.current) {
+      return;
+    }
+    const deltaX = event.clientX - dragOriginRef.current.x;
+    const deltaY = event.clientY - dragOriginRef.current.y;
+    updateCamera({
+      x: dragOriginRef.current.startX + deltaX,
+      y: dragOriginRef.current.startY + deltaY
+    });
+  };
+
+  const stopPointerDrag = (event?: ReactPointerEvent<HTMLDivElement>) => {
+    if (event && dragPointerIdRef.current === event.pointerId) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    dragPointerIdRef.current = null;
+    dragOriginRef.current = null;
+  };
+
+  const handleCanvasWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey && Math.abs(event.deltaY) < Math.abs(event.deltaX)) {
+      return;
+    }
+    event.preventDefault();
+    const zoomDelta = event.deltaY > 0 ? -0.08 : 0.08;
+    zoomAtPoint(camera.scale + zoomDelta, event.clientX, event.clientY);
+  };
+
+  const handleTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest(".memory-map-toolbar, .memory-map-status, .memory-map-detail")) {
+      return;
+    }
+    if (event.touches.length === 2) {
+      const [first, second] = [event.touches[0], event.touches[1]];
+      touchGestureRef.current = {
+        mode: "pinch",
+        startDistance: Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY),
+        startScale: camera.scale,
+        startCenterX: (first.clientX + second.clientX) / 2,
+        startCenterY: (first.clientY + second.clientY) / 2
+      };
+      return;
+    }
+    if (event.touches.length === 1 && !(event.target as HTMLElement).closest(".memory-map-node")) {
+      const touch = event.touches[0];
+      touchGestureRef.current = {
+        mode: "pan",
+        startX: touch.clientX,
+        startY: touch.clientY,
+        originX: camera.x,
+        originY: camera.y
+      };
+    }
+  };
+
+  const handleTouchMove = (event: ReactTouchEvent<HTMLDivElement>) => {
+    const gesture = touchGestureRef.current;
+    if (!gesture) {
+      return;
+    }
+    if (gesture.mode === "pinch" && event.touches.length === 2) {
+      event.preventDefault();
+      const [first, second] = [event.touches[0], event.touches[1]];
+      const distance = Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY);
+      const centerX = (first.clientX + second.clientX) / 2;
+      const centerY = (first.clientY + second.clientY) / 2;
+      const scaleRatio = distance / Math.max(gesture.startDistance, 1);
+      zoomAtPoint(gesture.startScale * scaleRatio, centerX, centerY);
+      return;
+    }
+    if (gesture.mode === "pan" && event.touches.length === 1) {
+      event.preventDefault();
+      const touch = event.touches[0];
+      updateCamera({
+        x: gesture.originX + (touch.clientX - gesture.startX),
+        y: gesture.originY + (touch.clientY - gesture.startY)
+      });
+    }
+  };
+
+  const handleTouchEnd = (event: ReactTouchEvent<HTMLDivElement>) => {
+    if (event.touches.length === 0) {
+      touchGestureRef.current = null;
+      return;
+    }
+    if (event.touches.length === 1) {
+      const touch = event.touches[0];
+      touchGestureRef.current = {
+        mode: "pan",
+        startX: touch.clientX,
+        startY: touch.clientY,
+        originX: camera.x,
+        originY: camera.y
+      };
+    }
+  };
 
   return (
     <div className="memory-map-stage">
@@ -521,6 +696,21 @@ export function MemoryStarMapPanel({
           </label>
         </div>
 
+        <div
+          className="memory-map-canvas"
+          style={canvasStyle}
+          onPointerDown={handleCanvasPointerDown}
+          onPointerMove={handleCanvasPointerMove}
+          onPointerUp={stopPointerDrag}
+          onPointerCancel={stopPointerDrag}
+          onWheel={handleCanvasWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={() => {
+            touchGestureRef.current = null;
+          }}
+        >
         <div className="memory-map-background" aria-hidden="true" />
 
         <svg className="memory-map-links" viewBox={`0 0 ${viewport.width} ${viewport.height}`} preserveAspectRatio="none">
@@ -576,8 +766,8 @@ export function MemoryStarMapPanel({
 
         <div className="memory-map-nodes">
           {positionedNodes.map((node) => {
-            const left = (node.x ?? 0) - (node.kind === "root" ? 28 : 22);
-            const top = (node.y ?? 0) - (node.kind === "root" ? 28 : 22);
+            const left = (node.x ?? 0) - (node.kind === "root" ? 24 : 18);
+            const top = (node.y ?? 0) - (node.kind === "root" ? 24 : 18);
             const scale = node.kind === "root" ? 1 : use3d ? 0.92 + (((node.z ?? 0) + 60) / 120) * 0.28 : 1;
             const opacity = node.kind === "root" ? 1 : use3d ? 0.54 + (((node.z ?? 0) + 60) / 120) * 0.46 : 1;
             const isSelected = selectedNodeId === node.id;
@@ -600,7 +790,7 @@ export function MemoryStarMapPanel({
               ["--memory-surface" as string]: withAlpha(tint, node.kind === "root" ? 0.12 : 0.08),
               ["--memory-glow" as string]: withAlpha(tint, isSelected || isHovered ? 0.34 : 0.18),
               ["--memory-ring" as string]: withAlpha(tint, isSelected || isHovered ? 0.44 : 0.2),
-              ["--memory-label-width" as string]: node.kind === "root" ? "96px" : "116px"
+              ["--memory-label-width" as string]: node.kind === "root" ? "82px" : "96px"
             } as CSSProperties;
             return (
               <button
@@ -625,10 +815,10 @@ export function MemoryStarMapPanel({
                   <span className="memory-map-node-label">{node.kind === "root" ? ROOT_LABELS[node.timeline] : trimLabel(node.label, 10)}</span>
                   {node.kind === "memory" ? (
                     <span className="memory-map-node-subtitle">
-                      {relativeTime ?? `${Math.round((node.similarity ?? 0.5) * 100)}% match`}
+                      {relativeTime ?? `相似度 ${Math.round((node.similarity ?? 0.5) * 100)}%`}
                     </span>
                   ) : (
-                    <span className="memory-map-node-subtitle">Timeline Root</span>
+                    <span className="memory-map-node-subtitle">时间根节点</span>
                   )}
                 </span>
                 {node.kind === "memory" && (node.peerCount ?? 0) > 0 ? (
@@ -643,10 +833,18 @@ export function MemoryStarMapPanel({
           <button type="button" className="memory-map-dimension-toggle" onClick={() => setUse3d((prev) => !prev)}>
             {use3d ? "3D" : "2D"}
           </button>
+          <button
+            type="button"
+            className="memory-map-dimension-toggle"
+            onClick={() => setCamera(INITIAL_CAMERA)}
+          >
+            复位视角
+          </button>
           <span className="memory-map-counter">{summaryText}</span>
         </div>
 
-        <div className="memory-map-watermark">Memory Star Map</div>
+        <div className="memory-map-watermark">记忆星图</div>
+        </div>
 
         {loading ? <div className="memory-map-loading">正在编织记忆与关系的星图结构…</div> : null}
         {error ? <div className="memory-map-error">{error}</div> : null}
@@ -666,7 +864,7 @@ export function MemoryStarMapPanel({
               <span>{VIEW_LABELS[selectedNode.timeline === "current" ? "today" : selectedNode.timeline]}</span>
               <span>{sourceLabel(selectedNode.sourceType)}</span>
               {selectedNode.peerCount ? <span>{selectedNode.peerCount} 个相邻节点</span> : null}
-              {typeof selectedNode.similarity === "number" ? <span>{Math.round(selectedNode.similarity * 100)}% match</span> : null}
+              {typeof selectedNode.similarity === "number" ? <span>{`相似度 ${Math.round(selectedNode.similarity * 100)}%`}</span> : null}
               {selectedNode.updatedAt ? <span>{formatMemoryTime(selectedNode.updatedAt)}</span> : null}
             </div>
             <strong>{selectedNode.label}</strong>

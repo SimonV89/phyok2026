@@ -245,7 +245,7 @@ export function EmailLoginCard({ mode = "page", onSuccess, onCancel }: EmailLogi
           />
           <button
             type="button"
-            className="toolbar-login"
+            className="toolbar-login login-send-code-button"
             onClick={() => void handleSendCode()}
             disabled={sending || resendRemainingSec > 0}
           >
@@ -263,11 +263,11 @@ export function EmailLoginCard({ mode = "page", onSuccess, onCancel }: EmailLogi
             {verifying ? "登录中" : "完成登录"}
           </button>
           {isModal ? (
-            <button type="button" className="toolbar-login" onClick={onCancel}>
+            <button type="button" className="toolbar-login login-secondary-action" onClick={onCancel}>
               稍后再说
             </button>
           ) : (
-            <Link href="/" className="toolbar-login">
+            <Link href="/" className="toolbar-login login-secondary-action">
               返回聊天
             </Link>
           )}

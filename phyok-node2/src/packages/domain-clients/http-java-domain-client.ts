@@ -61,9 +61,8 @@ export class HttpJavaDomainClient implements DomainClients {
   async getMemoryGate(ctx: GatewayContext, query: string): Promise<MemoryGateResult> {
     return this.request<MemoryGateResult>(ctx, {
       method: "GET",
-      path: "/internal/memory/gate-check",
+      path: "/v2/memories/gate-check",
       query: {
-        requiredCount: "5",
         q: query
       }
     });
@@ -105,6 +104,25 @@ export class HttpJavaDomainClient implements DomainClients {
         source: "self_explore_agent_pro",
         mode: "plan_preview",
         query
+      }
+    });
+  }
+
+  async createMemoryFragment(
+    input: { contentText: string; timelineRoot?: string; searchable?: boolean },
+    ctx: GatewayContext
+  ): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(ctx, {
+      method: "POST",
+      path: "/v2/memories",
+      idempotencyKey: `${ctx.requestId}:memory-create`,
+      body: {
+        tenantId: ctx.tenantId || "tenant-demo",
+        appId: ctx.appId,
+        userId: ctx.userId,
+        timelineRoot: input.timelineRoot || "TODAY",
+        contentText: input.contentText,
+        searchable: input.searchable ?? true
       }
     });
   }

@@ -93,6 +93,58 @@ function detectSchool(text: string): string {
   return "other_school";
 }
 
+const AUTO_MEMORY_CAPTURE_PATTERNS = [
+  "小时候",
+  "童年",
+  "学生时代",
+  "那时候",
+  "那一年",
+  "以前",
+  "曾经",
+  "过去",
+  "往事",
+  "原生家庭",
+  "父母",
+  "上学时",
+  "小时候我",
+  "我记得"
+];
+
+function inferTimelineRoot(text: string) {
+  if (containsAny(text, ["童年", "幼年", "很小的时候"])) {
+    return "CHILDHOOD";
+  }
+  if (containsAny(text, ["小时候", "更早以前", "最早"])) {
+    return "EARLY";
+  }
+  if (containsAny(text, ["学生时代", "上学时", "高中", "大学", "初中"])) {
+    return "STUDENT";
+  }
+  if (containsAny(text, ["工作后", "上班", "职场", "同事", "领导"])) {
+    return "WORK";
+  }
+  return "TODAY";
+}
+
+function shouldAutoPersistMemory(state: SelfExploreState) {
+  const normalized = state.query.trim();
+  if (!normalized || normalized === "请把这轮整理出的个人记忆线索沉淀下来。") {
+    return false;
+  }
+  return state.primaryIntent === "memory_create" || containsAny(normalized, AUTO_MEMORY_CAPTURE_PATTERNS);
+}
+
+function buildMemoryContentForPersistence(state: SelfExploreState) {
+  const attachmentContext = state.multimodalDigest.attachments
+    .map((item) => item.extractedText || item.summary)
+    .filter(Boolean)
+    .join("\n");
+  return clampPromptText(
+    [state.query.trim(), attachmentContext ? `附件补充：\n${attachmentContext}` : ""].filter(Boolean).join("\n\n"),
+    2400
+  );
+}
+
 function getSchoolLabel(school: string): string {
   switch (school) {
     case "object_relations":
@@ -296,6 +348,20 @@ function detectSafetyRisk(text: string): Omit<SseEventPayloadMap["risk.alerted"]
 
 function buildActionsFromState(state: SelfExploreState) {
   if (state.primaryIntent === "memory_create") {
+    if (state.memoryWritePlan.persisted) {
+      return [
+        {
+          id: "memory_more_detail",
+          label: "补充更多细节",
+          prompt: "我想继续补充这段经历的更多具体细节。"
+        },
+        {
+          id: "memory_deep_explore",
+          label: "继续深入探索",
+          prompt: "请围绕这段已经沉淀下来的记忆，继续帮我深入理解它和我现在状态的关系。"
+        }
+      ];
+    }
     return [
       {
         id: "memory_more_detail",
@@ -945,6 +1011,34 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
       }
     }
   });
+
+  if (shouldAutoPersistMemory(state)) {
+    await emitTool("memory-persist", "记忆碎片入库", async () => {
+      try {
+        const contentText = buildMemoryContentForPersistence(state);
+        const fragment = await domainClients.createMemoryFragment(
+          {
+            contentText,
+            timelineRoot: inferTimelineRoot(contentText),
+            searchable: true
+          },
+          activeContext
+        );
+        state.memoryWritePlan = {
+          ...state.memoryWritePlan,
+          persisted: true,
+          fragment
+        };
+        state.output.actions = buildActionsFromState(state);
+      } catch (error) {
+        input.emit("warning.raised", {
+          runId: state.runId,
+          message:
+            error instanceof Error ? `记忆入库失败，本轮不会进入星图：${error.message}` : "记忆入库失败，本轮不会进入星图。"
+        });
+      }
+    });
+  }
 
   input.emit("interaction.required", {
     runId: state.runId,

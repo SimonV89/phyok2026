@@ -254,7 +254,7 @@ function buildSchoolIntentPrompt(school: (typeof PSYCHOLOGY_SCHOOLS)[number]): s
   return `我想开启一个全新的探索上下文，请以“${school}”作为主要视角，结合我当下的情绪、关系和困扰，帮助我理解现在的心理状态，并给出一个最值得继续深入的探索方向。`;
 }
 
-type ComposerToolIconKind = "document" | "image" | "audio" | "record" | "recording" | "processing";
+type ComposerToolIconKind = "document" | "image" | "record" | "recording" | "processing";
 
 function AccountEntryIcon() {
   return (
@@ -262,6 +262,17 @@ function AccountEntryIcon() {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 12.25a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z" />
         <path d="M5.75 18.25a6.25 6.25 0 0 1 12.5 0" />
+      </svg>
+    </span>
+  );
+}
+
+function NewContextIcon() {
+  return (
+    <span className="toolbar-login-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 5v14" />
+        <path d="M5 12h14" />
       </svg>
     </span>
   );
@@ -316,19 +327,6 @@ function ComposerToolIcon({ kind }: { kind: ComposerToolIconKind }) {
           <rect x="4.5" y="5.25" width="15" height="13.5" rx="2.75" />
           <circle cx="9" cy="10" r="1.6" />
           <path d="M6.25 16.75 10.25 12.75 13.1 15.6 15.2 13.5 17.75 16.05" />
-        </svg>
-      </span>
-    );
-  }
-
-  if (kind === "audio") {
-    return (
-      <span className="composer-tool-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M10.5 8.25A2.25 2.25 0 0 1 12.75 6h0A2.25 2.25 0 0 1 15 8.25v4.5A2.25 2.25 0 0 1 12.75 15h0a2.25 2.25 0 0 1-2.25-2.25v-4.5Z" />
-          <path d="M8.25 11.75a4.5 4.5 0 0 0 9 0" />
-          <path d="M12.75 15v3.25" />
-          <path d="M10 18.25h5.5" />
         </svg>
       </span>
     );
@@ -675,7 +673,6 @@ export function ChatShell() {
   const pendingFilesRef = useRef<Map<string, File>>(new Map());
   const docInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
-  const audioInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
@@ -717,6 +714,7 @@ export function ChatShell() {
   const [historyDeletingId, setHistoryDeletingId] = useState<string | null>(null);
   const [historyKeyword, setHistoryKeyword] = useState("");
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [memoryMapRefreshKey, setMemoryMapRefreshKey] = useState(0);
   const [auditEvents, setAuditEvents] = useState<
     Array<{
       id: string;
@@ -867,6 +865,40 @@ export function ChatShell() {
       pendingFilesRef.current.delete(attachmentId);
     }
   }, []);
+  const handleStartFreshContext = useCallback(async () => {
+    const activeRunId = chat.stream.runId;
+    if (activeRunId) {
+      try {
+        streamAbortRef.current?.abort();
+        await stopRun(activeRunId);
+      } catch {
+        // ignore stop failure when switching to a fresh context
+      } finally {
+        clearActiveRun();
+      }
+    } else {
+      clearActiveRun();
+    }
+
+    removePendingFiles(chat.attachments.map((item) => item.id));
+    pendingFilesRef.current.clear();
+    const conversationId = createConversationId();
+    persistConversationId(conversationId);
+    setFollowLatest(true);
+    setHasUnreadBelow(false);
+    setShowJumpBottom(false);
+    setUnreadUpdateCount(0);
+    setPendingSuggestionChip(null);
+    setMobileDrawerOpen(false);
+    setActiveModule("explore");
+    dispatch(
+      startFreshConversation({
+        conversationId,
+        composerText: ""
+      })
+    );
+    dispatch(clearComposer());
+  }, [chat.attachments, chat.stream.runId, clearActiveRun, dispatch, persistConversationId, removePendingFiles]);
 
   const pauseAtmosphere = useCallback(() => {
     animationPausedRef.current = true;
@@ -1040,6 +1072,7 @@ export function ChatShell() {
           } else {
             dispatch(completeRun());
           }
+          setMemoryMapRefreshKey((value) => value + 1);
           clearActiveRun();
           break;
         default:
@@ -1122,7 +1155,7 @@ export function ChatShell() {
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setRecordingError("当前浏览器不支持直接录音，请改用“语音”上传本地音频。");
+      setRecordingError("当前浏览器不支持直接录音，请使用支持麦克风采集的浏览器。");
       return;
     }
 
@@ -1134,12 +1167,22 @@ export function ChatShell() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = pickRecordingMimeType();
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      const audioContext = new AudioContext();
-      const sourceNode = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.84;
-      sourceNode.connect(analyser);
+      const audioWindow = window as Window &
+        typeof globalThis & {
+          webkitAudioContext?: typeof AudioContext;
+        };
+      const AudioContextClass = audioWindow.AudioContext ?? audioWindow.webkitAudioContext;
+      const audioContext = AudioContextClass ? new AudioContextClass() : null;
+      const analyser = audioContext ? audioContext.createAnalyser() : null;
+      if (audioContext && audioContext.state === "suspended") {
+        await audioContext.resume();
+      }
+      if (audioContext && analyser) {
+        const sourceNode = audioContext.createMediaStreamSource(stream);
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.84;
+        sourceNode.connect(analyser);
+      }
       audioContextRef.current = audioContext;
       analyserRef.current = analyser;
       recordingStreamRef.current = stream;
@@ -1148,6 +1191,13 @@ export function ChatShell() {
       const sampleWave = () => {
         const currentAnalyser = analyserRef.current;
         if (!currentAnalyser) {
+          const t = Date.now() / 220;
+          const nextLevels = Array.from({ length: RECORDING_WAVE_BAR_COUNT }, (_, index) => {
+            const pulse = (Math.sin(t + index * 0.42) + 1) / 2;
+            return clamp(0.18 + pulse * 0.62, 0.16, 0.96);
+          });
+          setRecordingLevels(nextLevels);
+          recordingFrameRef.current = window.requestAnimationFrame(sampleWave);
           return;
         }
         const frequencyData = new Uint8Array(currentAnalyser.frequencyBinCount);
@@ -1984,30 +2034,63 @@ export function ChatShell() {
         </div>
         <div className="toolbar-actions">
           {isPortraitMobile ? (
-            <button
-              type="button"
-              className="toolbar-drawer-toggle"
-              aria-label={mobileDrawerOpen ? "收起模块抽屉" : "展开模块抽屉"}
-              title={mobileDrawerOpen ? "收起模块抽屉" : "展开模块抽屉"}
-              onClick={() => setMobileDrawerOpen((value) => !value)}
-            >
-              <DrawerToggleIcon />
-              <span className="toolbar-drawer-copy">
-                <strong>{mobileDrawerOpen ? "模块已展开" : "模块抽屉"}</strong>
-                <small>{mobileDrawerOpen ? "轻触收起" : "轻触展开"}</small>
-              </span>
-            </button>
+            <div className="toolbar-mobile-actions">
+              <button
+                type="button"
+                className="toolbar-drawer-toggle"
+                aria-label={mobileDrawerOpen ? "收起模块抽屉" : "展开模块抽屉"}
+                title={mobileDrawerOpen ? "收起模块抽屉" : "展开模块抽屉"}
+                onClick={() => setMobileDrawerOpen((value) => !value)}
+              >
+                <DrawerToggleIcon />
+                <span className="toolbar-drawer-copy">
+                  <strong>{mobileDrawerOpen ? "模块已展开" : "模块抽屉"}</strong>
+                  <small>{mobileDrawerOpen ? "轻触收起" : "轻触展开"}</small>
+                </span>
+              </button>
+              <div className="toolbar-mobile-shortcuts">
+                <button
+                  type="button"
+                  className="toolbar-quick-action icon-only"
+                  aria-label="新建上下文"
+                  title="新建上下文"
+                  onClick={() => void handleStartFreshContext()}
+                >
+                  <NewContextIcon />
+                </button>
+                <button
+                  type="button"
+                  className="toolbar-quick-action icon-only"
+                  aria-label={authSession ? `当前账号 ${authSession.email}` : "邮箱登录"}
+                  title={authSession ? authSession.email : "邮箱登录"}
+                  onClick={openAuthDialog}
+                >
+                  <AccountEntryIcon />
+                </button>
+              </div>
+            </div>
           ) : null}
           {!isPortraitMobile ? (
-            <button
-              type="button"
-              className={`toolbar-login ${authSession ? "" : "icon-only"}`.trim()}
-              aria-label={authSession ? `已登录，当前账号 ${authSession.email}` : "邮箱登录"}
-              title={authSession ? authSession.email : "邮箱登录"}
-              onClick={openAuthDialog}
-            >
-              {authSession ? authSession.email : <AccountEntryIcon />}
-            </button>
+            <>
+              <button
+                type="button"
+                className="toolbar-quick-action icon-only"
+                aria-label="新建上下文"
+                title="新建上下文"
+                onClick={() => void handleStartFreshContext()}
+              >
+                <NewContextIcon />
+              </button>
+              <button
+                type="button"
+                className={`toolbar-login ${authSession ? "" : "icon-only"}`.trim()}
+                aria-label={authSession ? `已登录，当前账号 ${authSession.email}` : "邮箱登录"}
+                title={authSession ? authSession.email : "邮箱登录"}
+                onClick={openAuthDialog}
+              >
+                {authSession ? authSession.email : <AccountEntryIcon />}
+              </button>
+            </>
           ) : null}
         </div>
       </header>
@@ -2283,6 +2366,7 @@ export function ChatShell() {
             <MemoryStarMapPanel
               currentConversationId={chat.conversationId}
               currentUserId={authSession?.userId ?? null}
+              refreshKey={memoryMapRefreshKey}
               onOpenConversation={(conversationId) => openHistoryConversation(conversationId)}
             />
           ) : activeModule === "profile" ? (
@@ -2756,15 +2840,6 @@ export function ChatShell() {
                       </button>
                       <button
                         type="button"
-                        className="composer-tool-button"
-                        aria-label="上传语音"
-                        title="上传语音"
-                        onClick={() => audioInputRef.current?.click()}
-                      >
-                        <ComposerToolIcon kind="audio" />
-                      </button>
-                      <button
-                        type="button"
                         className={`composer-tool-button ${recordingState === "recording" ? "recording" : ""} ${
                           recordingState === "processing" ? "processing" : ""
                         }`}
@@ -2923,14 +2998,6 @@ export function ChatShell() {
         ref={imageInputRef}
         type="file"
         accept="image/*"
-        hidden
-        onChange={(event) => attachFiles(event.target.files)}
-      />
-      <input
-        ref={audioInputRef}
-        type="file"
-        accept="audio/*"
-        multiple
         hidden
         onChange={(event) => attachFiles(event.target.files)}
       />

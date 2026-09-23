@@ -86,6 +86,16 @@ async function upsertMemoryPlan(query: string) {
   };
 }
 
+async function createMemoryFragment(input: { contentText: string; timelineRoot?: string; searchable?: boolean }) {
+  return {
+    id: `mem_local_${Date.now()}`,
+    timelineRoot: input.timelineRoot || "TODAY",
+    contentText: input.contentText,
+    searchable: input.searchable ?? true,
+    sourceType: "local-debug"
+  };
+}
+
 async function emitAuditTrace(_ctx: GatewayContext, _status: AuditTracePhase) {
   return;
 }
@@ -104,6 +114,7 @@ export function createMockDomainClients(): DomainClients {
     recallMemory: async (query) => recallMemory(query),
     recallKnowledge: async (query) => recallKnowledge(query),
     upsertMemoryPlan: async (query) => upsertMemoryPlan(query),
+    createMemoryFragment: async (input) => createMemoryFragment(input),
     emitAuditTrace,
     precheckBilling: async () => precheckBilling()
   };
