@@ -1,5 +1,7 @@
-# Keep root runtime env committed for this project.
-!env2
+# Root runtime env must stay local only.
+env2
+env2.*
+!*.example
 
 # Legacy / non-target workspaces
 /phyok-app/
