@@ -46,7 +46,15 @@ export type SelfExploreState = {
   };
   multimodalDigest: {
     summary: string;
-    attachments: Array<{ name: string; kind: string; mimeType: string; summary?: string }>;
+    attachments: Array<{
+      id: string;
+      name: string;
+      kind: string;
+      mimeType: string;
+      summary?: string;
+      extractedText?: string;
+      parseStatus?: string;
+    }>;
   };
   normalizedInput: {
     plainText: string;

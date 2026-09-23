@@ -7,6 +7,7 @@ import {
   ERROR_CODES,
   extractExternalHeaders
 } from "../../packages/contracts/api";
+import { getUploadedAsset } from "../media-v2/asset-store";
 import {
   attachChatRunStream,
   createChatRun,
@@ -74,6 +75,25 @@ function normalizeAttachments(attachments: z.infer<typeof attachmentSchema>[]): 
   }));
 }
 
+function validateAttachments(attachments: ChatV2Attachment[]): { ok: true } | { ok: false; message: string } {
+  for (const attachment of attachments) {
+    if (!attachment.id || attachment.id.startsWith("attachment-")) {
+      return {
+        ok: false,
+        message: `附件 ${attachment.name} 缺少有效 assetId，请重新上传后再发送。`
+      };
+    }
+    const asset = getUploadedAsset(attachment.id);
+    if (!asset) {
+      return {
+        ok: false,
+        message: `附件 ${attachment.name} 已失效或当前节点未找到，请重新上传。`
+      };
+    }
+  }
+  return { ok: true };
+}
+
 function getStringHeader(headers: Record<string, unknown>, name: string): string | undefined {
   const value = headers[name];
   if (Array.isArray(value)) {
@@ -96,6 +116,15 @@ export const chatV2Routes = async (app: FastifyInstance) => {
       return;
     }
 
+    const attachments = normalizeAttachments(parsed.data.attachments ?? []);
+    const attachmentValidation = validateAttachments(attachments);
+    if (!attachmentValidation.ok) {
+      await reply
+        .code(400)
+        .send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_BAD_REQUEST, attachmentValidation.message));
+      return;
+    }
+
     const run = createChatRun({
       authorization: externalHeaders.authorization,
       requestId: externalHeaders.requestId,
@@ -105,7 +134,7 @@ export const chatV2Routes = async (app: FastifyInstance) => {
       sessionId: getStringHeader(request.headers, "x-session-id"),
       conversationId: parsed.data.conversationId,
       message: parsed.data.message,
-      attachments: normalizeAttachments(parsed.data.attachments ?? [])
+      attachments
     });
 
     reply.hijack();

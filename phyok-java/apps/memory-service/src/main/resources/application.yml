@@ -1,6 +1,11 @@
 spring:
   application:
     name: memory-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:phyok}
     username: ${POSTGRES_USER:phyok}
@@ -22,7 +27,12 @@ phyok:
     preview-top-k: ${MEMORY_PREVIEW_TOP_K:6}
     retrieval-mode: ${MEMORY_RETRIEVAL_MODE:hybrid-recall}
     rerank-enabled: ${MEMORY_RERANK_ENABLED:true}
-    qdrant-collection: ${QDRANT_COLLECTION:memory_chunks}
+    qdrant-collection: ${QDRANT_COLLECTION:user_memory_fragments}
+    qdrant-enabled: ${MEMORY_QDRANT_ENABLED:true}
+    qdrant-url: "${QDRANT_URL:http://qdrant:6333}"
+    qdrant-api-key: ${QDRANT_API_KEY:}
+    qdrant-vector-dimension: ${MEMORY_QDRANT_VECTOR_DIMENSION:1024}
+    qdrant-embedding-version: ${MEMORY_QDRANT_EMBEDDING_VERSION:1}
     audit-enabled: ${MEMORY_AUDIT_ENABLED:true}
     audit-base-url: "${AUDIT_INTERNAL_BASE_URL:http://audit-service:18087}"
     semantic-chunk-enabled: ${MEMORY_SEMANTIC_CHUNK_ENABLED:true}
@@ -35,5 +45,12 @@ phyok:
     semantic-chunk-min-chars: ${MEMORY_SEMANTIC_MIN_CHARS:80}
     semantic-chunk-max-chars: ${MEMORY_SEMANTIC_MAX_CHARS:280}
     semantic-chunk-llm-threshold-chars: ${MEMORY_SEMANTIC_LLM_THRESHOLD_CHARS:120}
+    embedding-base-url: "${SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}"
+    embedding-api-key: ${SILICONFLOW_API_KEY:}
+    embedding-model: ${SILICONFLOW_EMBEDDING_MODEL:BAAI/bge-m3}
+    embedding-timeout-ms: ${MEMORY_EMBEDDING_TIMEOUT_MS:20000}
+    outbox-enabled: ${MEMORY_OUTBOX_ENABLED:true}
+    outbox-worker-batch-size: ${MEMORY_OUTBOX_WORKER_BATCH_SIZE:24}
+    outbox-worker-fixed-delay-ms: ${MEMORY_OUTBOX_WORKER_FIXED_DELAY_MS:3000}
 server:
   port: ${MEMORY_PORT:18083}

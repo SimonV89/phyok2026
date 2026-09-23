@@ -7,6 +7,7 @@ import com.phyok.memory.infrastructure.client.MemoryAuditClient;
 import com.phyok.memory.infrastructure.mybatis.entity.MemoryFragmentDO;
 import com.phyok.memory.infrastructure.repository.MemoryFragmentRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -23,17 +24,21 @@ public class MemoryCommandService {
     private final MemoryFragmentRepository memoryFragmentRepository;
     private final MemoryAuditClient memoryAuditClient;
     private final SemanticChunkService semanticChunkService;
+    private final MemoryProjectionOutboxService memoryProjectionOutboxService;
 
     public MemoryCommandService(
             MemoryFragmentRepository memoryFragmentRepository,
             MemoryAuditClient memoryAuditClient,
-            SemanticChunkService semanticChunkService
+            SemanticChunkService semanticChunkService,
+            MemoryProjectionOutboxService memoryProjectionOutboxService
     ) {
         this.memoryFragmentRepository = memoryFragmentRepository;
         this.memoryAuditClient = memoryAuditClient;
         this.semanticChunkService = semanticChunkService;
+        this.memoryProjectionOutboxService = memoryProjectionOutboxService;
     }
 
+    @Transactional
     public MemoryFragmentView createFragment(
             String requestId,
             String tenantId,
@@ -68,6 +73,7 @@ public class MemoryCommandService {
             memoryFragment.setCreatedAt(now);
             applyChunkMetadata(memoryFragment, chunk);
             memoryFragmentRepository.save(memoryFragment);
+            memoryProjectionOutboxService.enqueueUpsert(memoryFragment);
             publishAuditEvent(requestId, "MEMORY_CREATED", memoryFragment, Map.of(
                     "action", "create",
                     "timelineRoot", memoryFragment.getTimelineRoot(),
@@ -83,6 +89,7 @@ public class MemoryCommandService {
         return toView(primaryFragment);
     }
 
+    @Transactional
     public MemoryFragmentView updateFragment(
             String requestId,
             String tenantId,
@@ -116,6 +123,7 @@ public class MemoryCommandService {
                 "MANUAL_UPDATE"
         ));
         memoryFragmentRepository.update(memoryFragment);
+        memoryProjectionOutboxService.enqueueUpsert(memoryFragment);
         publishAuditEvent(requestId, "MEMORY_UPDATED", memoryFragment, Map.of(
                 "action", "update",
                 "timelineRoot", memoryFragment.getTimelineRoot(),
@@ -127,6 +135,7 @@ public class MemoryCommandService {
         return toView(memoryFragment);
     }
 
+    @Transactional
     public MemoryDeleteResultView deleteFragment(String requestId, String tenantId, String appId, String userId, String id) {
         MemoryFragmentDO memoryFragment = memoryFragmentRepository.findById(
                         defaultIfBlank(tenantId, "tenant-demo"),
@@ -142,6 +151,9 @@ public class MemoryCommandService {
                 id
         );
         if (affected > 0 && memoryFragment != null) {
+            memoryFragment.setDeleted(true);
+            memoryFragment.setSearchable(false);
+            memoryProjectionOutboxService.enqueueDelete(memoryFragment);
             publishAuditEvent(requestId, "MEMORY_DELETED", memoryFragment, Map.of(
                     "action", "delete",
                     "timelineRoot", memoryFragment.getTimelineRoot()
@@ -150,11 +162,18 @@ public class MemoryCommandService {
         return new MemoryDeleteResultView(id, affected > 0);
     }
 
+    @Transactional
     public MemoryBulkEraseResultView eraseUserFragments(String requestId, String tenantId, String appId, String userId) {
         String safeTenantId = defaultIfBlank(tenantId, "tenant-demo");
         String safeAppId = defaultIfBlank(appId, "app-self-explore");
         String safeUserId = defaultIfBlank(userId, "user-demo");
+        List<MemoryFragmentDO> activeFragments = memoryFragmentRepository.findActiveByUser(safeTenantId, safeAppId, safeUserId);
         int affectedCount = memoryFragmentRepository.softDeleteAllByUser(safeTenantId, safeAppId, safeUserId);
+        for (MemoryFragmentDO fragment : activeFragments) {
+            fragment.setDeleted(true);
+            fragment.setSearchable(false);
+            memoryProjectionOutboxService.enqueueDelete(fragment);
+        }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("tenantId", safeTenantId);
         payload.put("appId", safeAppId);

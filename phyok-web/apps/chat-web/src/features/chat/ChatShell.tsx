@@ -254,6 +254,123 @@ function buildSchoolIntentPrompt(school: (typeof PSYCHOLOGY_SCHOOLS)[number]): s
   return `我想开启一个全新的探索上下文，请以“${school}”作为主要视角，结合我当下的情绪、关系和困扰，帮助我理解现在的心理状态，并给出一个最值得继续深入的探索方向。`;
 }
 
+type ComposerToolIconKind = "document" | "image" | "audio" | "record" | "recording" | "processing";
+
+function AccountEntryIcon() {
+  return (
+    <span className="toolbar-login-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 12.25a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z" />
+        <path d="M5.75 18.25a6.25 6.25 0 0 1 12.5 0" />
+      </svg>
+    </span>
+  );
+}
+
+function SendActionIcon() {
+  return (
+    <span className="send-button-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 4 11 13" />
+        <path d="m20 4-6 16-3.5-7.5L3 9l17-5Z" />
+      </svg>
+    </span>
+  );
+}
+
+function DrawerToggleIcon() {
+  return (
+    <span className="toolbar-drawer-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="5" width="16" height="14" rx="3" />
+        <path d="M10 5v14" />
+        <path d="M7 9h0.01" />
+        <path d="M7 12h0.01" />
+        <path d="M7 15h0.01" />
+        <path d="M13 9h4" />
+        <path d="M13 12h4" />
+        <path d="M13 15h3" />
+      </svg>
+    </span>
+  );
+}
+
+function ComposerToolIcon({ kind }: { kind: ComposerToolIconKind }) {
+  if (kind === "document") {
+    return (
+      <span className="composer-tool-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M8 3.75h5.5L18.25 8.5V18A2.25 2.25 0 0 1 16 20.25H8A2.25 2.25 0 0 1 5.75 18V6A2.25 2.25 0 0 1 8 3.75Z" />
+          <path d="M13.5 3.75V8.5h4.75" />
+          <path d="M8.75 12h6.5" />
+          <path d="M8.75 15.5h6.5" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (kind === "image") {
+    return (
+      <span className="composer-tool-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="4.5" y="5.25" width="15" height="13.5" rx="2.75" />
+          <circle cx="9" cy="10" r="1.6" />
+          <path d="M6.25 16.75 10.25 12.75 13.1 15.6 15.2 13.5 17.75 16.05" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (kind === "audio") {
+    return (
+      <span className="composer-tool-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10.5 8.25A2.25 2.25 0 0 1 12.75 6h0A2.25 2.25 0 0 1 15 8.25v4.5A2.25 2.25 0 0 1 12.75 15h0a2.25 2.25 0 0 1-2.25-2.25v-4.5Z" />
+          <path d="M8.25 11.75a4.5 4.5 0 0 0 9 0" />
+          <path d="M12.75 15v3.25" />
+          <path d="M10 18.25h5.5" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (kind === "processing") {
+    return (
+      <span className="composer-tool-icon is-processing" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <path d="M12 5.5a6.5 6.5 0 0 1 6.02 4.05" />
+          <path d="M18.1 14.35A6.5 6.5 0 0 1 7.8 18.4" />
+          <path d="M5.9 9.65A6.5 6.5 0 0 1 12 5.5" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (kind === "recording") {
+    return (
+      <span className="composer-tool-icon is-live" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="8" y="8" width="8" height="8" rx="2.2" />
+          <path d="M12 4.75v1.5" />
+          <path d="M12 17.75v1.5" />
+        </svg>
+        <span className="composer-tool-live-dot" />
+      </span>
+    );
+  }
+
+  return (
+    <span className="composer-tool-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10.5 8.25A2.25 2.25 0 0 1 12.75 6h0A2.25 2.25 0 0 1 15 8.25v4.5A2.25 2.25 0 0 1 12.75 15h0a2.25 2.25 0 0 1-2.25-2.25v-4.5Z" />
+        <path d="M8.25 11.75a4.5 4.5 0 0 0 9 0" />
+        <path d="M12.75 15v3.25" />
+        <path d="M10 18.25h5.5" />
+      </svg>
+    </span>
+  );
+}
+
 function isNearBottom(element: HTMLDivElement): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight < 120;
 }
@@ -1870,14 +1987,26 @@ export function ChatShell() {
             <button
               type="button"
               className="toolbar-drawer-toggle"
+              aria-label={mobileDrawerOpen ? "收起模块抽屉" : "展开模块抽屉"}
+              title={mobileDrawerOpen ? "收起模块抽屉" : "展开模块抽屉"}
               onClick={() => setMobileDrawerOpen((value) => !value)}
             >
-              {mobileDrawerOpen ? "收起模块" : "展开模块"}
+              <DrawerToggleIcon />
+              <span className="toolbar-drawer-copy">
+                <strong>{mobileDrawerOpen ? "模块已展开" : "模块抽屉"}</strong>
+                <small>{mobileDrawerOpen ? "轻触收起" : "轻触展开"}</small>
+              </span>
             </button>
           ) : null}
           {!isPortraitMobile ? (
-            <button type="button" className="toolbar-login" onClick={openAuthDialog}>
-              {authSession ? `已登录 · ${authSession.email}` : "邮箱登录"}
+            <button
+              type="button"
+              className={`toolbar-login ${authSession ? "" : "icon-only"}`.trim()}
+              aria-label={authSession ? `已登录，当前账号 ${authSession.email}` : "邮箱登录"}
+              title={authSession ? authSession.email : "邮箱登录"}
+              onClick={openAuthDialog}
+            >
+              {authSession ? authSession.email : <AccountEntryIcon />}
             </button>
           ) : null}
         </div>
@@ -2025,14 +2154,20 @@ export function ChatShell() {
           <div className="sidebar-bottom-meta">
             {isPortraitMobile ? (
               <div className="sidebar-mobile-footer">
-                <button type="button" className="toolbar-login sidebar-footer-login" onClick={openAuthDialog}>
-                  {authSession ? `已登录 · ${authSession.email}` : "邮箱登录"}
+                <button
+                  type="button"
+                  className={`toolbar-login sidebar-footer-login ${authSession ? "" : "icon-only"}`.trim()}
+                  aria-label={authSession ? `已登录，当前账号 ${authSession.email}` : "邮箱登录"}
+                  title={authSession ? authSession.email : "邮箱登录"}
+                  onClick={openAuthDialog}
+                >
+                  {authSession ? authSession.email : <AccountEntryIcon />}
                 </button>
               </div>
             ) : null}
             <div className="sidebar-filing">
-              <span>吉ICP备17004852号-2</span>
-              <span>SimonWZB 2026</span>
+              <span className="sidebar-filing-line">ICP备案：吉ICP备17004852号-2</span>
+              <span className="sidebar-filing-line">© SimonWZB 2026</span>
             </div>
           </div>
         </aside>
@@ -2162,8 +2297,14 @@ export function ChatShell() {
                     退出当前账号
                   </button>
                 ) : (
-                  <button type="button" className="toolbar-login" onClick={openAuthDialog}>
-                    邮箱登录
+                  <button
+                    type="button"
+                    className="toolbar-login icon-only"
+                    aria-label="邮箱登录"
+                    title="邮箱登录"
+                    onClick={openAuthDialog}
+                  >
+                    <AccountEntryIcon />
                   </button>
                 )}
               </div>
@@ -2595,37 +2736,75 @@ export function ChatShell() {
 
                   <div className="composer-actions">
                     <div className="composer-left">
-                      <button type="button" className="composer-tool-button" onClick={() => docInputRef.current?.click()}>
-                        文档
+                      <button
+                        type="button"
+                        className="composer-tool-button"
+                        aria-label="上传文档"
+                        title="上传文档"
+                        onClick={() => docInputRef.current?.click()}
+                      >
+                        <ComposerToolIcon kind="document" />
                       </button>
-                      <button type="button" className="composer-tool-button" onClick={() => imageInputRef.current?.click()}>
-                        图片
+                      <button
+                        type="button"
+                        className="composer-tool-button"
+                        aria-label="上传图片"
+                        title="上传图片"
+                        onClick={() => imageInputRef.current?.click()}
+                      >
+                        <ComposerToolIcon kind="image" />
                       </button>
-                      <button type="button" className="composer-tool-button" onClick={() => audioInputRef.current?.click()}>
-                        语音
+                      <button
+                        type="button"
+                        className="composer-tool-button"
+                        aria-label="上传语音"
+                        title="上传语音"
+                        onClick={() => audioInputRef.current?.click()}
+                      >
+                        <ComposerToolIcon kind="audio" />
                       </button>
                       <button
                         type="button"
                         className={`composer-tool-button ${recordingState === "recording" ? "recording" : ""} ${
                           recordingState === "processing" ? "processing" : ""
                         }`}
+                        aria-label={
+                          recordingState === "recording"
+                            ? `结束录音，当前已录 ${formatDuration(recordingElapsedMs)}`
+                            : recordingState === "processing"
+                              ? "录音处理中"
+                              : "开始录音"
+                        }
+                        title={
+                          recordingState === "recording"
+                            ? `结束录音，当前已录 ${formatDuration(recordingElapsedMs)}`
+                            : recordingState === "processing"
+                              ? "录音处理中"
+                              : "开始录音"
+                        }
                         onClick={toggleRecording}
                         disabled={uploading || chat.stream.status === "streaming" || chat.stream.status === "reconnecting"}
                       >
-                        {recordingState === "recording"
-                          ? `录音中 ${formatDuration(recordingElapsedMs)}`
-                          : recordingState === "processing"
-                            ? "处理中"
-                            : "录音"}
+                        <ComposerToolIcon
+                          kind={
+                            recordingState === "recording"
+                              ? "recording"
+                              : recordingState === "processing"
+                                ? "processing"
+                                : "record"
+                          }
+                        />
                       </button>
                     </div>
                     <button
                       type="button"
-                      className="send-button"
+                      className="send-button icon-only"
+                      aria-label="发送"
+                      title="发送"
                       onClick={() => void handleSend()}
                       disabled={composerDisabled || (!chat.composerText.trim() && chat.attachments.length === 0)}
                     >
-                      发送
+                      <SendActionIcon />
                     </button>
                   </div>
 

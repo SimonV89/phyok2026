@@ -2,9 +2,11 @@ package com.phyok.memory.application.service;
 
 import com.phyok.contracts.MemoryGateCheckView;
 import com.phyok.contracts.MemoryFragmentPageView;
+import com.phyok.contracts.MemoryRetrieveResultView;
 import com.phyok.contracts.MemoryFragmentView;
 import com.phyok.contracts.MemoryRecallHitView;
 import com.phyok.contracts.MemoryRetrievalPreviewView;
+import com.phyok.contracts.RetrievedMemoryFragmentView;
 import com.phyok.contracts.MemoryStarMapView;
 import com.phyok.memory.application.config.MemoryProperties;
 import com.phyok.memory.infrastructure.mybatis.entity.MemoryFragmentDO;
@@ -29,13 +31,19 @@ public class MemoryQueryService {
     private static final int MAX_PEERS_PER_NODE = 2;
     private final MemoryProperties properties;
     private final MemoryFragmentRepository memoryFragmentRepository;
+    private final MemoryEmbeddingClient memoryEmbeddingClient;
+    private final MemoryQdrantClient memoryQdrantClient;
 
     public MemoryQueryService(
             MemoryProperties properties,
-            MemoryFragmentRepository memoryFragmentRepository
+            MemoryFragmentRepository memoryFragmentRepository,
+            MemoryEmbeddingClient memoryEmbeddingClient,
+            MemoryQdrantClient memoryQdrantClient
     ) {
         this.properties = properties;
         this.memoryFragmentRepository = memoryFragmentRepository;
+        this.memoryEmbeddingClient = memoryEmbeddingClient;
+        this.memoryQdrantClient = memoryQdrantClient;
     }
 
     public MemoryGateCheckView gateCheck(String tenantId, String appId, String userId) {
@@ -48,20 +56,49 @@ public class MemoryQueryService {
     }
 
     public MemoryRetrievalPreviewView retrievalPreview(String tenantId, String appId, String userId, String query) {
-        List<MemoryFragmentDO> fragments = memoryFragmentRepository.findLatestSearchableFragments(
+        List<RetrievedMemoryFragmentView> items = retrieveMemoryItems(
                 tenantId,
                 appId,
                 userId,
-                properties.getPreviewTopK()
+                query,
+                properties.getPreviewTopK(),
+                null,
+                List.of(),
+                List.of()
         );
         return new MemoryRetrievalPreviewView(
                 query,
                 properties.getPreviewTopK(),
-                properties.getRetrievalMode(),
+                properties.isQdrantEnabled() ? "qdrant-recall-pg-enrich" : properties.getRetrievalMode(),
                 properties.isRerankEnabled(),
                 properties.getQdrantCollection(),
-                mapHits(fragments)
+                items.stream().map(this::toPreviewHit).toList()
         );
+    }
+
+    public MemoryRetrieveResultView retrieveMemory(
+            String tenantId,
+            String appId,
+            String userId,
+            String query,
+            Integer topK,
+            Double minScore,
+            List<String> timelineRoots,
+            List<String> topicTags
+    ) {
+        int safeTopK = topK == null || topK < 1 ? properties.getPreviewTopK() : Math.min(topK, 20);
+        double safeMinScore = minScore == null || minScore <= 0d ? 0.68d : Math.min(Math.max(minScore, 0.01d), 0.99d);
+        List<RetrievedMemoryFragmentView> items = retrieveMemoryItems(
+                tenantId,
+                appId,
+                userId,
+                query,
+                safeTopK,
+                safeMinScore,
+                normalizeTimelineRoots(timelineRoots),
+                normalizeTags(topicTags)
+        );
+        return new MemoryRetrieveResultView(query, safeTopK, safeMinScore, items);
     }
 
     public MemoryStarMapView buildStarMap(
@@ -210,6 +247,97 @@ public class MemoryQueryService {
                 .toList();
     }
 
+    private List<RetrievedMemoryFragmentView> retrieveMemoryItems(
+            String tenantId,
+            String appId,
+            String userId,
+            String query,
+            int topK,
+            Double minScore,
+            List<String> timelineRoots,
+            List<String> topicTags
+    ) {
+        try {
+            if (query != null && !query.isBlank() && properties.isQdrantEnabled()) {
+                List<Double> vector = memoryEmbeddingClient.embed(query.trim());
+                List<MemoryQdrantClient.SearchHit> hits = memoryQdrantClient.searchMemory(
+                        tenantId,
+                        appId,
+                        userId,
+                        vector,
+                        topK,
+                        minScore,
+                        timelineRoots,
+                        topicTags
+                );
+                if (!hits.isEmpty()) {
+                    return enrichHits(tenantId, appId, userId, hits);
+                }
+            }
+        } catch (Exception ignored) {
+            // Fall through to PG lexical fallback to keep local/dev flow available.
+        }
+        return fallbackRetrieveMemoryItems(tenantId, appId, userId, query, topK, timelineRoots, topicTags);
+    }
+
+    private List<RetrievedMemoryFragmentView> enrichHits(
+            String tenantId,
+            String appId,
+            String userId,
+            List<MemoryQdrantClient.SearchHit> hits
+    ) {
+        List<String> ids = hits.stream().map(MemoryQdrantClient.SearchHit::fragmentId).toList();
+        Map<String, MemoryFragmentDO> fragmentMap = memoryFragmentRepository.findByIds(tenantId, appId, userId, ids).stream()
+                .collect(Collectors.toMap(MemoryFragmentDO::getId, item -> item));
+        List<RetrievedMemoryFragmentView> items = new ArrayList<>();
+        for (MemoryQdrantClient.SearchHit hit : hits) {
+            MemoryFragmentDO fragment = fragmentMap.get(hit.fragmentId());
+            if (fragment == null) {
+                continue;
+            }
+            items.add(new RetrievedMemoryFragmentView(
+                    fragment.getId(),
+                    buildTitle(fragment.getContentText()),
+                    fragment.getContentText(),
+                    hit.score(),
+                    splitTags(fragment.getTopicTags()),
+                    splitTags(fragment.getEmotionTags())
+            ));
+        }
+        return items;
+    }
+
+    private List<RetrievedMemoryFragmentView> fallbackRetrieveMemoryItems(
+            String tenantId,
+            String appId,
+            String userId,
+            String query,
+            int topK,
+            List<String> timelineRoots,
+            List<String> topicTags
+    ) {
+        List<MemoryFragmentDO> fragments = memoryFragmentRepository.findLatestSearchableFragments(
+                tenantId,
+                appId,
+                userId,
+                Math.max(topK * 4, topK)
+        );
+        return fragments.stream()
+                .filter(fragment -> timelineRoots == null || timelineRoots.isEmpty() || timelineRoots.contains(fragment.getTimelineRoot()))
+                .filter(fragment -> topicTags == null || topicTags.isEmpty() || matchesAnyTag(fragment.getTopicTags(), topicTags))
+                .map(fragment -> new RetrievedMemoryFragmentView(
+                        fragment.getId(),
+                        buildTitle(fragment.getContentText()),
+                        fragment.getContentText(),
+                        computeSimilarity(query == null ? "" : query, fragment.getContentText()),
+                        splitTags(fragment.getTopicTags()),
+                        splitTags(fragment.getEmotionTags())
+                ))
+                .sorted(Comparator.comparingDouble(RetrievedMemoryFragmentView::score).reversed())
+                .limit(topK)
+                .toList();
+    }
+
     private MemoryFragmentView toFragmentView(MemoryFragmentDO fragment) {
         return new MemoryFragmentView(
                 fragment.getId(),
@@ -235,6 +363,15 @@ public class MemoryQueryService {
                 buildTitle(fragment.getContentText()),
                 score,
                 fragment.getTimelineRoot()
+        );
+    }
+
+    private MemoryRecallHitView toPreviewHit(RetrievedMemoryFragmentView item) {
+        return new MemoryRecallHitView(
+                item.fragmentId(),
+                item.title(),
+                item.score(),
+                inferTimelineBucket(item.topicTags())
         );
     }
 
@@ -314,6 +451,29 @@ public class MemoryQueryService {
         return TIMELINE_ROOTS.contains(normalized) ? normalized : null;
     }
 
+    private List<String> normalizeTimelineRoots(List<String> timelineRoots) {
+        if (timelineRoots == null || timelineRoots.isEmpty()) {
+            return List.of();
+        }
+        return timelineRoots.stream()
+                .map(this::normalizeTimelineRoot)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    private List<String> normalizeTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return List.of();
+        }
+        return tags.stream()
+                .map(String::trim)
+                .filter(item -> !item.isBlank())
+                .distinct()
+                .limit(6)
+                .toList();
+    }
+
     private List<String> splitTags(String value) {
         if (value == null || value.isBlank()) {
             return List.of();
@@ -339,6 +499,26 @@ public class MemoryQueryService {
 
     private String defaultIfBlank(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private boolean matchesAnyTag(String serializedTags, List<String> expectedTags) {
+        if (serializedTags == null || serializedTags.isBlank()) {
+            return false;
+        }
+        List<String> current = splitTags(serializedTags);
+        for (String expectedTag : expectedTags) {
+            if (current.contains(expectedTag)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String inferTimelineBucket(List<String> topicTags) {
+        if (topicTags == null || topicTags.isEmpty()) {
+            return "memory";
+        }
+        return topicTags.get(0);
     }
 
     private record PeerCandidate(MemoryFragmentDO fragment, double score) {

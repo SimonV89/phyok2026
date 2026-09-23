@@ -4,14 +4,17 @@ import {
 } from "../../domain-clients";
 import type { StreamEventName, SseEventPayloadMap } from "../../contracts/sse";
 import {
+  bufferToDataUrl,
   describeImageWithSiliconFlow,
   streamSiliconFlowChat,
+  type ChatMessage,
   transcribeAudioWithSiliconFlow
 } from "../../ai/siliconflow";
 import { env } from "../../../config/env";
 import { createInitialSelfExploreState, type SelfExploreState } from "./state";
 import type { ChatV2Attachment } from "../../../modules/chat-v2/runtime";
 import { getUploadedAsset, updateUploadedAsset } from "../../../modules/media-v2/asset-store";
+import { prepareUploadedAsset } from "../../../modules/media-v2/asset-parser";
 
 type Emit = <T extends StreamEventName>(event: T, data: SseEventPayloadMap[T]) => void;
 
@@ -24,6 +27,16 @@ type ExecuteInput = {
   context: GatewayContext;
   signal: AbortSignal;
   emit: Emit;
+};
+
+type AttachmentUnderstandingResult = {
+  id: string;
+  name: string;
+  kind: ChatV2Attachment["kind"];
+  mimeType: string;
+  summary: string;
+  extractedText?: string;
+  parseStatus?: string;
 };
 
 function ensureNotAborted(signal: AbortSignal) {
@@ -351,6 +364,13 @@ function chunkText(text: string, size: number) {
   return chunks;
 }
 
+function clampPromptText(text: string, limit: number) {
+  if (text.length <= limit) {
+    return text;
+  }
+  return `${text.slice(0, limit)}…`;
+}
+
 function buildResponse(state: SelfExploreState) {
   if (state.primaryIntent === "memory_create") {
     return [
@@ -420,15 +440,29 @@ function buildResponse(state: SelfExploreState) {
 async function buildAttachmentSummary(
   attachment: ChatV2Attachment,
   signal: AbortSignal
-): Promise<string> {
+): Promise<AttachmentUnderstandingResult> {
   const asset = getUploadedAsset(attachment.id);
   if (!asset) {
-    return `${attachment.name}：附件已上传，但当前节点未找到可解析内容。`;
+    return {
+      id: attachment.id,
+      name: attachment.name,
+      kind: attachment.kind,
+      mimeType: attachment.mimeType,
+      summary: `${attachment.name}：附件已上传，但当前节点未找到可解析内容。`,
+      parseStatus: "failed"
+    };
   }
 
   if (attachment.kind === "image") {
     if (asset.imageSummary) {
-      return `${attachment.name}：${asset.imageSummary}`;
+      return {
+        id: attachment.id,
+        name: attachment.name,
+        kind: attachment.kind,
+        mimeType: attachment.mimeType,
+        summary: `${attachment.name}：${asset.imageSummary}`,
+        parseStatus: asset.parseStatus
+      };
     }
     const summary = await describeImageWithSiliconFlow({
       buffer: asset.buffer,
@@ -438,12 +472,27 @@ async function buildAttachmentSummary(
       signal
     });
     updateUploadedAsset(asset.assetId, { imageSummary: summary });
-    return `${attachment.name}：${summary}`;
+    return {
+      id: attachment.id,
+      name: attachment.name,
+      kind: attachment.kind,
+      mimeType: attachment.mimeType,
+      summary: `${attachment.name}：${summary}`,
+      parseStatus: asset.parseStatus
+    };
   }
 
   if (attachment.kind === "audio") {
     if (asset.transcript) {
-      return `${attachment.name}：语音转写为「${asset.transcript}」`;
+      return {
+        id: attachment.id,
+        name: attachment.name,
+        kind: attachment.kind,
+        mimeType: attachment.mimeType,
+        summary: `${attachment.name}：语音转写为「${asset.transcript}」`,
+        extractedText: clampPromptText(asset.transcript, 2400),
+        parseStatus: asset.parseStatus
+      };
     }
     const transcript = await transcribeAudioWithSiliconFlow({
       buffer: asset.buffer,
@@ -453,21 +502,92 @@ async function buildAttachmentSummary(
     });
     updateUploadedAsset(asset.assetId, { transcript });
     return transcript
-      ? `${attachment.name}：语音转写为「${transcript}」`
-      : `${attachment.name}：语音已识别，但未得到清晰转写文本。`;
+      ? {
+          id: attachment.id,
+          name: attachment.name,
+          kind: attachment.kind,
+          mimeType: attachment.mimeType,
+          summary: `${attachment.name}：语音转写为「${transcript}」`,
+          extractedText: clampPromptText(transcript, 2400),
+          parseStatus: asset.parseStatus
+        }
+      : {
+          id: attachment.id,
+          name: attachment.name,
+          kind: attachment.kind,
+          mimeType: attachment.mimeType,
+          summary: `${attachment.name}：语音已识别，但未得到清晰转写文本。`,
+          parseStatus: asset.parseStatus
+        };
   }
 
   if (attachment.kind === "document") {
-    if (asset.textPreview) {
-      return `${attachment.name}：文档预览「${asset.textPreview}」`;
+    const preparedAsset = asset.parseStatus === "parsed" ? asset : await prepareUploadedAsset(asset.assetId);
+    if (!preparedAsset) {
+      return {
+        id: attachment.id,
+        name: attachment.name,
+        kind: attachment.kind,
+        mimeType: attachment.mimeType,
+        summary: `${attachment.name}：文档已上传，但当前节点未找到解析结果。`,
+        parseStatus: "failed"
+      };
     }
-    return `${attachment.name}：已上传文档，当前版本会先保留文件信息，后续可继续补更完整的解析。`;
+    if (preparedAsset.documentSummary) {
+      return {
+        id: attachment.id,
+        name: attachment.name,
+        kind: attachment.kind,
+        mimeType: attachment.mimeType,
+        summary: `${attachment.name}：文档理解为「${preparedAsset.documentSummary}」`,
+        extractedText: clampPromptText(preparedAsset.documentText || preparedAsset.documentSummary, 3600),
+        parseStatus: preparedAsset.parseStatus
+      };
+    }
+    if (preparedAsset.textPreview) {
+      return {
+        id: attachment.id,
+        name: attachment.name,
+        kind: attachment.kind,
+        mimeType: attachment.mimeType,
+        summary: `${attachment.name}：文档预览「${preparedAsset.textPreview}」`,
+        extractedText: clampPromptText(preparedAsset.textPreview, 2400),
+        parseStatus: preparedAsset.parseStatus
+      };
+    }
+    return {
+      id: attachment.id,
+      name: attachment.name,
+      kind: attachment.kind,
+      mimeType: attachment.mimeType,
+      summary: preparedAsset.parseError
+        ? `${attachment.name}：文档解析失败（${preparedAsset.parseError}）。`
+        : `${attachment.name}：已上传文档，但当前未能提取可读内容。`,
+      parseStatus: preparedAsset.parseStatus
+    };
   }
 
-  return `${attachment.name}：已上传 ${attachment.mimeType} 附件。`;
+  return {
+    id: attachment.id,
+    name: attachment.name,
+    kind: attachment.kind,
+    mimeType: attachment.mimeType,
+    summary: `${attachment.name}：已上传 ${attachment.mimeType} 附件。`,
+    parseStatus: asset.parseStatus
+  };
 }
 
-function buildModelMessages(state: SelfExploreState) {
+function hasUsableImageAttachment(state: SelfExploreState) {
+  return state.attachments.some((attachment) => {
+    if (attachment.kind !== "image") {
+      return false;
+    }
+    const asset = getUploadedAsset(attachment.id);
+    return Boolean(asset?.buffer?.byteLength);
+  });
+}
+
+function buildModelMessages(state: SelfExploreState, includeImageBlocks = true): ChatMessage[] {
   const schoolLabel = getSchoolLabel(state.school);
   const systemPrompt = [buildFloydPersonaPrompt(), buildRolePrompt(state), buildOutputContract(state)].join("\n\n");
 
@@ -484,6 +604,42 @@ function buildModelMessages(state: SelfExploreState) {
     "请据此直接生成给用户的本轮回答。优先做到：先承接，再洞察，再追问。"
   ];
 
+  const userContentBlocks: Array<
+    | {
+        type: "text";
+        text: string;
+      }
+    | {
+        type: "image_url";
+        image_url: {
+          url: string;
+        };
+      }
+  > = [
+    {
+      type: "text",
+      text: sections.join("\n\n")
+    }
+  ];
+
+  if (includeImageBlocks) {
+    for (const attachment of state.attachments) {
+      if (attachment.kind !== "image") {
+        continue;
+      }
+      const asset = getUploadedAsset(attachment.id);
+      if (!asset) {
+        continue;
+      }
+      userContentBlocks.push({
+        type: "image_url",
+        image_url: {
+          url: bufferToDataUrl(asset.buffer, asset.mimeType)
+        }
+      });
+    }
+  }
+
   return [
     {
       role: "system" as const,
@@ -491,7 +647,7 @@ function buildModelMessages(state: SelfExploreState) {
     },
     {
       role: "user" as const,
-      content: sections.join("\n\n")
+      content: userContentBlocks
     }
   ];
 }
@@ -544,12 +700,7 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
       return;
     }
     const attachmentSummaries = await Promise.all(
-      state.attachments.map(async (item) => ({
-        name: item.name,
-        kind: item.kind,
-        mimeType: item.mimeType,
-        summary: await buildAttachmentSummary(item, input.signal)
-      }))
+      state.attachments.map((item) => buildAttachmentSummary(item, input.signal))
     );
     state.multimodalDigest = {
       summary: attachmentSummaries.map((item) => `- ${item.summary}`).join("\n"),
@@ -558,8 +709,15 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
   });
 
   await emitTool("input-normalizer", "输入规范化", async () => {
+    const attachmentContext = clampPromptText(
+      state.multimodalDigest.attachments
+        .map((item) => item.extractedText || item.summary)
+        .filter(Boolean)
+        .join("\n"),
+      4200
+    );
     state.normalizedInput = {
-      plainText: state.query.trim(),
+      plainText: [state.query.trim(), attachmentContext ? `附件补充：\n${attachmentContext}` : ""].filter(Boolean).join("\n\n"),
       summary:
         state.attachments.length > 0
           ? `文本输入已归一化，并完成附件理解：\n${state.multimodalDigest.summary}`
@@ -718,23 +876,51 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
     }
 
     try {
-      const completion = await streamSiliconFlowChat({
-        model: env.siliconFlowConcludeModel,
-        messages: buildModelMessages(state),
-        signal: input.signal,
-        onReasoning: (delta) => {
-          input.emit("thinking.delta", {
-            runId: state.runId,
-            delta
-          });
-        },
-        onDelta: (delta) => {
-          input.emit("message.delta", {
-            runId: state.runId,
-            delta
-          });
+      let completion;
+      try {
+        completion = await streamSiliconFlowChat({
+          model: env.siliconFlowConcludeModel,
+          messages: buildModelMessages(state, true),
+          signal: input.signal,
+          onReasoning: (delta) => {
+            input.emit("thinking.delta", {
+              runId: state.runId,
+              delta
+            });
+          },
+          onDelta: (delta) => {
+            input.emit("message.delta", {
+              runId: state.runId,
+              delta
+            });
+          }
+        });
+      } catch (error) {
+        if (!hasUsableImageAttachment(state)) {
+          throw error;
         }
-      });
+        input.emit("warning.raised", {
+          runId: state.runId,
+          message: "图像直连理解暂时不可用，已自动回退到图片摘要模式。"
+        });
+        completion = await streamSiliconFlowChat({
+          model: env.siliconFlowConcludeModel,
+          messages: buildModelMessages(state, false),
+          signal: input.signal,
+          onReasoning: (delta) => {
+            input.emit("thinking.delta", {
+              runId: state.runId,
+              delta
+            });
+          },
+          onDelta: (delta) => {
+            input.emit("message.delta", {
+              runId: state.runId,
+              delta
+            });
+          }
+        });
+      }
 
       state.output.response = completion.text.trim();
       if (completion.reasoning.trim()) {

@@ -18,6 +18,8 @@
     "@fastify/rate-limit": "^10.3.0",
     "dotenv": "^17.3.1",
     "fastify": "^5.8.2",
+    "mammoth": "^1.12.3",
+    "pdf-parse": "^2.2.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {

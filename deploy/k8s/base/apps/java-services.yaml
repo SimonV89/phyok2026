@@ -150,6 +150,37 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: memory-embedding-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: memory-embedding-consumer
+  template:
+    metadata:
+      labels:
+        app: memory-embedding-consumer
+    spec:
+      containers:
+        - name: memory-embedding-consumer
+          image: ghcr.io/your-org/phyok-memory-embedding-consumer:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: phyok-platform-config
+            - secretRef:
+                name: phyok-platform-secret
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "256Mi"
+            limits:
+              cpu: "800m"
+              memory: "512Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: knowledge-service
 spec:
   replicas: 1

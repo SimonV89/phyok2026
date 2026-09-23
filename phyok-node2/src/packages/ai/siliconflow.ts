@@ -2,7 +2,7 @@ import { env } from "../../config/env";
 
 type ChatRole = "system" | "user" | "assistant";
 
-type ChatMessage =
+export type ChatMessage =
   | {
       role: ChatRole;
       content: string;
@@ -99,7 +99,7 @@ function getTextFromContent(content: unknown): string {
     .join("");
 }
 
-function bufferToDataUrl(buffer: Buffer, mimeType: string): string {
+export function bufferToDataUrl(buffer: Buffer, mimeType: string): string {
   return `data:${mimeType};base64,${buffer.toString("base64")}`;
 }
 

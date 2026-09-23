@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: memory-embedding-consumer
+  main:
+    web-application-type: none
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    consumer:
+      group-id: ${MEMORY_EMBEDDING_CONSUMER_GROUP_ID:memory-embedding-consumer}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+phyok:
+  memory-consumer:
+    qdrant-enabled: ${MEMORY_QDRANT_ENABLED:true}
+    qdrant-url: "${QDRANT_URL:http://qdrant:6333}"
+    qdrant-api-key: ${QDRANT_API_KEY:}
+    qdrant-collection: ${QDRANT_COLLECTION:user_memory_fragments}
+    qdrant-vector-dimension: ${MEMORY_QDRANT_VECTOR_DIMENSION:1024}
+    qdrant-embedding-version: ${MEMORY_QDRANT_EMBEDDING_VERSION:1}
+    embedding-base-url: "${SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}"
+    embedding-api-key: ${SILICONFLOW_API_KEY:}
+    embedding-model: ${SILICONFLOW_EMBEDDING_MODEL:BAAI/bge-m3}
+    embedding-timeout-ms: ${MEMORY_EMBEDDING_TIMEOUT_MS:20000}

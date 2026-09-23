@@ -17,6 +17,13 @@ public interface MemoryFragmentMapper {
             @Param("id") String id
     );
 
+    MemoryFragmentDO selectByIdIncludingDeleted(
+            @Param("tenantId") String tenantId,
+            @Param("appId") String appId,
+            @Param("userId") String userId,
+            @Param("id") String id
+    );
+
     int updateById(MemoryFragmentDO memoryFragment);
 
     int softDeleteById(
@@ -59,5 +66,18 @@ public interface MemoryFragmentMapper {
             @Param("timelineRoot") String timelineRoot,
             @Param("limit") int limit,
             @Param("offset") int offset
+    );
+
+    List<MemoryFragmentDO> selectByIds(
+            @Param("tenantId") String tenantId,
+            @Param("appId") String appId,
+            @Param("userId") String userId,
+            @Param("ids") List<String> ids
+    );
+
+    List<MemoryFragmentDO> selectActiveByUser(
+            @Param("tenantId") String tenantId,
+            @Param("appId") String appId,
+            @Param("userId") String userId
     );
 }

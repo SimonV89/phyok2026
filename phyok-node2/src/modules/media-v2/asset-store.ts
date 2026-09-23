@@ -1,5 +1,7 @@
 import type { UploadAssetKind } from "./types";
 
+export type AssetParseStatus = "uploaded" | "parsing" | "parsed" | "failed";
+
 export type StoredAsset = {
   assetId: string;
   fileName: string;
@@ -8,7 +10,11 @@ export type StoredAsset = {
   kind: UploadAssetKind;
   buffer: Buffer;
   uploadedAt: number;
+  parseStatus: AssetParseStatus;
+  parseError?: string;
   textPreview?: string;
+  documentText?: string;
+  documentSummary?: string;
   transcript?: string;
   imageSummary?: string;
 };
@@ -53,6 +59,7 @@ export function saveUploadedAsset(input: {
     kind: input.kind,
     buffer: input.buffer,
     uploadedAt: Date.now(),
+    parseStatus: input.kind === "document" ? "uploaded" : "parsed",
     textPreview: buildTextPreview(input.buffer, input.mimeType)
   };
   uploadedAssets.set(asset.assetId, asset);

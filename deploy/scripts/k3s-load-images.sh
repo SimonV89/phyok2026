@@ -84,7 +84,7 @@ run_target() {
     chat-web)
       build_web_image
       ;;
-    auth-service|tenant-service|memory-service|knowledge-service|billing-service|payment-service|audit-service|privacy-service|ops-admin-service)
+    auth-service|tenant-service|memory-service|memory-embedding-consumer|knowledge-service|billing-service|payment-service|audit-service|privacy-service|ops-admin-service)
       build_java_image "${item}"
       ;;
     *)

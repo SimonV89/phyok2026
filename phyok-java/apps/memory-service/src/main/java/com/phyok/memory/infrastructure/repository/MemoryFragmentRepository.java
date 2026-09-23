@@ -23,6 +23,10 @@ public class MemoryFragmentRepository {
         return Optional.ofNullable(memoryFragmentMapper.selectById(tenantId, appId, userId, id));
     }
 
+    public Optional<MemoryFragmentDO> findByIdIncludingDeleted(String tenantId, String appId, String userId, String id) {
+        return Optional.ofNullable(memoryFragmentMapper.selectByIdIncludingDeleted(tenantId, appId, userId, id));
+    }
+
     public int update(MemoryFragmentDO memoryFragment) {
         return memoryFragmentMapper.updateById(memoryFragment);
     }
@@ -56,5 +60,16 @@ public class MemoryFragmentRepository {
             int offset
     ) {
         return memoryFragmentMapper.selectFragmentsPage(tenantId, appId, userId, timelineRoot, limit, offset);
+    }
+
+    public List<MemoryFragmentDO> findByIds(String tenantId, String appId, String userId, List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return memoryFragmentMapper.selectByIds(tenantId, appId, userId, ids);
+    }
+
+    public List<MemoryFragmentDO> findActiveByUser(String tenantId, String appId, String userId) {
+        return memoryFragmentMapper.selectActiveByUser(tenantId, appId, userId);
     }
 }

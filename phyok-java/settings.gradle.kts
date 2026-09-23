@@ -25,6 +25,7 @@ include(
     "apps:auth-service",
     "apps:tenant-service",
     "apps:memory-service",
+    "apps:memory-embedding-consumer",
     "apps:knowledge-service",
     "apps:billing-service",
     "apps:payment-service",

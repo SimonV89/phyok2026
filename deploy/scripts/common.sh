@@ -10,6 +10,7 @@ JAVA_APP_SERVICES=(
   auth-service
   tenant-service
   memory-service
+  memory-embedding-consumer
   knowledge-service
   billing-service
   payment-service
@@ -25,6 +26,7 @@ JAVA_K8S_WORKLOADS=(
   auth-service
   tenant-service
   memory-service
+  memory-embedding-consumer
   knowledge-service
   billing-service
   payment-service

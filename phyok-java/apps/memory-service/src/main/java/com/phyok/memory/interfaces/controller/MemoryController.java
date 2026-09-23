@@ -6,6 +6,7 @@ import com.phyok.contracts.MemoryDeleteResultView;
 import com.phyok.contracts.MemoryBulkEraseResultView;
 import com.phyok.contracts.MemoryFragmentPageView;
 import com.phyok.contracts.MemoryFragmentView;
+import com.phyok.contracts.MemoryRetrieveResultView;
 import com.phyok.contracts.MemoryRetrievalPreviewView;
 import com.phyok.contracts.MemoryStarMapView;
 import com.phyok.memory.application.service.MemoryCommandService;
@@ -106,6 +107,32 @@ public class MemoryController {
         return ApiResponse.ok(
                 requestIdOrDefault(requestId),
                 memoryQueryService.retrievalPreview(tenantId, appId, userId, query)
+        );
+    }
+
+    @PostMapping("/internal/memory/retrieve")
+    public ApiResponse<MemoryRetrieveResultView> retrieveMemory(
+            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
+            @RequestParam(value = "tenantId", defaultValue = "tenant-demo") String tenantId,
+            @RequestParam(value = "appId", defaultValue = "app-self-explore") String appId,
+            @RequestParam(value = "userId", defaultValue = "user-demo") String userId,
+            @RequestBody(required = false) RetrieveMemoryRequest request
+    ) {
+        RetrieveMemoryRequest safeRequest = request == null
+                ? new RetrieveMemoryRequest("最近总是担心关系会突然断掉", 6, 0.68d, java.util.List.of(), java.util.List.of())
+                : request;
+        return ApiResponse.ok(
+                requestIdOrDefault(requestId),
+                memoryQueryService.retrieveMemory(
+                        tenantId,
+                        appId,
+                        userId,
+                        safeRequest.query(),
+                        safeRequest.topK(),
+                        safeRequest.minScore(),
+                        safeRequest.timelineRoots(),
+                        safeRequest.topicTags()
+                )
         );
     }
 

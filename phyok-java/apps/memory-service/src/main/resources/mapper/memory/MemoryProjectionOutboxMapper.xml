@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.phyok.memory.infrastructure.mybatis.mapper.MemoryProjectionOutboxMapper">
+
+    <resultMap id="MemoryProjectionOutboxResultMap" type="com.phyok.memory.infrastructure.mybatis.entity.MemoryProjectionOutboxDO">
+        <id property="id" column="id"/>
+        <result property="tenantId" column="tenant_id"/>
+        <result property="appId" column="app_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="fragmentId" column="fragment_id"/>
+        <result property="eventType" column="event_type"/>
+        <result property="topicName" column="topic_name"/>
+        <result property="payloadJson" column="payload_json"/>
+        <result property="status" column="status"/>
+        <result property="attemptCount" column="attempt_count"/>
+        <result property="availableAt" column="available_at"/>
+        <result property="lastError" column="last_error"/>
+        <result property="processedAt" column="processed_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.phyok.memory.infrastructure.mybatis.entity.MemoryProjectionOutboxDO">
+        insert into memory_projection_outbox (
+            id,
+            tenant_id,
+            app_id,
+            user_id,
+            fragment_id,
+            event_type,
+            topic_name,
+            payload_json,
+            status,
+            attempt_count,
+            available_at,
+            last_error,
+            processed_at,
+            created_at,
+            updated_at
+        ) values (
+            #{id},
+            #{tenantId},
+            #{appId},
+            #{userId},
+            #{fragmentId},
+            #{eventType},
+            #{topicName},
+            #{payloadJson},
+            #{status},
+            #{attemptCount},
+            #{availableAt},
+            #{lastError},
+            #{processedAt},
+            #{createdAt},
+            #{updatedAt}
+        )
+    </insert>
+
+    <select id="selectPendingForProcessing" resultMap="MemoryProjectionOutboxResultMap">
+        select id,
+               tenant_id,
+               app_id,
+               user_id,
+               fragment_id,
+               event_type,
+               topic_name,
+               payload_json,
+               status,
+               attempt_count,
+               available_at,
+               last_error,
+               processed_at,
+               created_at,
+               updated_at
+        from memory_projection_outbox
+        where status = 'PENDING'
+          and available_at &lt;= now()
+        order by created_at asc, id asc
+        limit #{limit}
+        for update skip locked
+    </select>
+
+    <update id="markProcessing">
+        update memory_projection_outbox
+        set status = 'PROCESSING',
+            attempt_count = attempt_count + 1,
+            updated_at = #{updatedAt},
+            last_error = null
+        where id = #{id}
+          and status = 'PENDING'
+    </update>
+
+    <update id="markCompleted">
+        update memory_projection_outbox
+        set status = 'COMPLETED',
+            processed_at = #{processedAt},
+            updated_at = #{processedAt},
+            last_error = null
+        where id = #{id}
+    </update>
+
+    <update id="markRetry">
+        update memory_projection_outbox
+        set status = 'PENDING',
+            available_at = #{availableAt},
+            updated_at = #{updatedAt},
+            last_error = #{lastError}
+        where id = #{id}
+    </update>
+
+    <update id="markDead">
+        update memory_projection_outbox
+        set status = 'FAILED',
+            updated_at = #{updatedAt},
+            last_error = #{lastError}
+        where id = #{id}
+    </update>
+</mapper>

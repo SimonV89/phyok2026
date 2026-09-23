@@ -93,6 +93,32 @@
         limit 1
     </select>
 
+    <select id="selectByIdIncludingDeleted" resultMap="MemoryFragmentResultMap">
+        select id,
+               tenant_id,
+               app_id,
+               user_id,
+               timeline_root,
+               content_text,
+               searchable,
+               fragment_type,
+               visibility,
+               time_bucket,
+               topic_tags,
+               emotion_tags,
+               chunk_seq,
+               chunk_confidence,
+               chunk_strategy,
+               deleted,
+               created_at
+        from memory_fragment
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and user_id = #{userId}
+          and id = #{id}
+        limit 1
+    </select>
+
     <update id="updateById" parameterType="com.phyok.memory.infrastructure.mybatis.entity.MemoryFragmentDO">
         update memory_fragment
         set timeline_root = #{timelineRoot},
@@ -215,5 +241,60 @@
         order by created_at desc, id desc
         limit #{limit}
         offset #{offset}
+    </select>
+
+    <select id="selectByIds" resultMap="MemoryFragmentResultMap">
+        select id,
+               tenant_id,
+               app_id,
+               user_id,
+               timeline_root,
+               content_text,
+               searchable,
+               fragment_type,
+               visibility,
+               time_bucket,
+               topic_tags,
+               emotion_tags,
+               chunk_seq,
+               chunk_confidence,
+               chunk_strategy,
+               deleted,
+               created_at
+        from memory_fragment
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and user_id = #{userId}
+          and deleted = false
+          and id in
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <select id="selectActiveByUser" resultMap="MemoryFragmentResultMap">
+        select id,
+               tenant_id,
+               app_id,
+               user_id,
+               timeline_root,
+               content_text,
+               searchable,
+               fragment_type,
+               visibility,
+               time_bucket,
+               topic_tags,
+               emotion_tags,
+               chunk_seq,
+               chunk_confidence,
+               chunk_strategy,
+               deleted,
+               created_at
+        from memory_fragment
+        where tenant_id = #{tenantId}
+          and app_id = #{appId}
+          and user_id = #{userId}
+          and deleted = false
+        order by created_at desc, id desc
     </select>
 </mapper>
