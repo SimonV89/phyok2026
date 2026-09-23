@@ -3,6 +3,7 @@ kind: Ingress
 metadata:
   name: phyok-platform-ingress
   annotations:
+    kubernetes.io/ingress.class: "nginx"
     nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
@@ -11,6 +12,7 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
     nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
 spec:
+  ingressClassName: nginx
   rules:
     - host: api.phyok.local
       http:
