@@ -5,12 +5,13 @@
 ## H5 端预览
 
 <p align="center">
-  <img src="imgs/h5-1.jpg" width="30%" alt="H5 首页与对话" />
-  <img src="imgs/h5-2.png" width="30%" alt="H5 记忆星图" />
-  <img src="imgs/h5-3.png" width="30%" alt="H5 左侧栏" />
+  <img src="imgs/h5-1.jpg" width="24%" alt="H5 首页" />
+  <img src="imgs/h5-2.png" width="24%" alt="H5 记忆星图" />
+  <img src="imgs/h5-3.png" width="24%" alt="H5 左侧栏" />
+  <img src="imgs/h5-4.png" width="24%" alt="H5 套餐与支付" />
 </p>
 
-<p align="center" style="color:#888;font-size:13px;margin-top:4px">左：首页对话 · 中：记忆星图 · 右：左侧栏引导</p>
+<p align="center" style="color:#888;font-size:13px;margin-top:4px">首页对话 · 记忆星图 · 左侧栏 · 套餐支付</p>
 
 ## 1. 概述
 
