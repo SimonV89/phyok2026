@@ -2,7 +2,15 @@
 
 🔗 在线访问：https://www.phyok.com
 
-`心理学空间·自我探索Agent Pro` 是一个面向长期演进的 AI Agent 对话网站，围绕“心理学学习、自我探索、记忆沉淀与记忆修复”构建。当前仓库已经打通了 Web 对话端、Node BFF / Agent Runtime、Java 微服务、支付/审计与记忆图谱等核心链路，并支持本地 Docker 联调与 K3s/K8s 部署。整套工程化架构以抗熵增、便于 AI 代码 Review、保持长期可维护性为目标，希望把产品体验与工程质量都尽量打磨得稳一些、长久一些。项目由作者 `SimonWZB` 全栈开发并开源分享，欢迎指正、交流，也欢迎一起继续把它做得更好。
+## H5 端预览
+
+<p align="center">
+  <img src="imgs/h5-1.jpg" width="30%" alt="H5 首页与对话" />
+  <img src="imgs/h5-2.png" width="30%" alt="H5 记忆星图" />
+  <img src="imgs/h5-3.png" width="30%" alt="H5 左侧栏" />
+</p>
+
+<p align="center" style="color:#888;font-size:13px;margin-top:4px">左：首页对话 · 中：记忆星图 · 右：左侧栏引导</p>
 
 ## 1. 概述
 
@@ -158,6 +166,14 @@
   - `audit-service`：审计事件写入与查询
   - 其他：`tenant-service`、`privacy-service`、`knowledge-service`、`ops-admin-service`
 - `deploy`：Compose、K3s/K8s、Nginx 与运维脚本
+
+### CMS 运营后台
+
+<p align="center">
+  <img src="imgs/cms-1.png" width="80%" alt="CMS 运营后台" />
+</p>
+
+<p align="center" style="color:#888;font-size:13px;margin-top:4px">CMS 运营后台：用户、付费订单、投诉反馈、审计事件一站式管理</p>
 
 ## 3. 运行与部署
 
