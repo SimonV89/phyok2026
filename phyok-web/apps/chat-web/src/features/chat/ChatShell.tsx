@@ -2,9 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import dynamic from "next/dynamic";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createAlipayOrder,
@@ -56,8 +55,6 @@ import {
   updateLastSeq
 } from "@/store/chat-slice";
 import { useAppDispatch, useAppSelector } from "@/store/index";
-import { MemoryStarMapPanel } from "@/features/chat/MemoryStarMapPanel";
-import { EmailLoginCard } from "@/features/auth/EmailLoginCard";
 
 const ACTIVE_RUN_STORAGE_KEY = "phyok-chat-active-run";
 const LAST_CONVERSATION_STORAGE_KEY = "phyok-chat-last-conversation";
@@ -124,6 +121,7 @@ type SuggestionSeed = {
   lane: SuggestionLane;
   guideTitle: string;
   guideBody: string;
+  visibleText: string;
   kickoffPrompt: string;
 };
 type SuggestionBandPosition = "top" | "bottom";
@@ -141,8 +139,27 @@ type SuggestionChip = {
   bobAmplitude: number;
   guideTitle: string;
   guideBody: string;
+  visibleText: string;
   kickoffPrompt: string;
 };
+
+const LazyMemoryStarMapPanel = dynamic(
+  () => import("@/features/chat/MemoryStarMapPanel").then((module) => module.MemoryStarMapPanel),
+  {
+    ssr: false,
+    loading: () => <div className="module-loading-card">正在准备记忆星图...</div>
+  }
+);
+
+const LazyEmailLoginCard = dynamic(
+  () => import("@/features/auth/EmailLoginCard").then((module) => module.EmailLoginCard),
+  {
+    ssr: false,
+    loading: () => <div className="account-auth-loading">正在准备登录...</div>
+  }
+);
+
+const LazyChatMessageMarkdown = lazy(() => import("@/features/chat/ChatMessageMarkdown"));
 
 const MEMORY_SUGGESTION_SEEDS: readonly SuggestionSeed[] = [
   {
@@ -151,6 +168,7 @@ const MEMORY_SUGGESTION_SEEDS: readonly SuggestionSeed[] = [
     lane: "memory",
     guideTitle: "先把反复出现的情绪说具体一点",
     guideBody: "这一步不会直接给结论，而是先帮你把最近反复出现的情绪落到触发场景、身体反应和当下关系里，找到最值得继续追问的入口。",
+    visibleText: "我想先聊聊最近反复出现的情绪。",
     kickoffPrompt:
       "我想从“最近反复出现的情绪”开始。请先不要直接分析结论，而是用温和、具体的方式引导我继续追问：先用 1 到 2 句承接我的处境，再给我 2 到 3 个循序渐进、低压力的问题，帮助我把最近反复出现的情绪、触发场景和身体感受说得更清楚。最后只保留 1 个最值得我先回答的问题。"
   },
@@ -160,6 +178,7 @@ const MEMORY_SUGGESTION_SEEDS: readonly SuggestionSeed[] = [
     lane: "memory",
     guideTitle: "先把那段关系片段慢慢打开",
     guideBody: "我会先让 Floyd 帮你回到那段难忘片段里的关键细节，不急着下定义，而是先分清楚发生了什么、你当时怎么感受、为什么它还留在心里。",
+    visibleText: "我想聊一段让我忘不掉的关系片段。",
     kickoffPrompt:
       "我想从“一段忘不掉的关系片段”开始。请先不要直接解释这段关系意味着什么，而是先用细腻、低压的方式引导我继续说：围绕当时发生了什么、我最在意的一个瞬间、以及现在回想时最强烈的感受，给我 2 到 3 个递进问题。最后只留下 1 个最适合我先回答的问题。"
   },
@@ -169,6 +188,7 @@ const MEMORY_SUGGESTION_SEEDS: readonly SuggestionSeed[] = [
     lane: "memory",
     guideTitle: "先认出今天和过去是怎么连起来的",
     guideBody: "这一步会先帮你辨认当下困扰和旧经验之间是否真的存在回声，而不是立刻把一切都归因给原生家庭。",
+    visibleText: "我想看看现在的反应，和原生家庭里的旧回声有什么关系。",
     kickoffPrompt:
       "我想从“原生家庭里的旧回声”开始。请先不要直接做原生家庭结论，而是先温和地引导我辨认：今天哪一种情绪或关系反应最像旧经验、它像什么、以及我为什么会在此刻被触发。请给我 2 到 3 个递进问题，最后保留 1 个最值得先回答的问题。"
   },
@@ -178,6 +198,7 @@ const MEMORY_SUGGESTION_SEEDS: readonly SuggestionSeed[] = [
     lane: "memory",
     guideTitle: "先让身体感受有一个可描述的轮廓",
     guideBody: "我会先帮你把那种说不清的身体反应描述出来，再慢慢连接到可能相关的情境和情绪，让它变成可以继续探索的记忆线索。",
+    visibleText: "我想把一个最近反复出现的身体感受说清楚。",
     kickoffPrompt:
       "我想从“一个身体感受”开始。请先不要直接解释原因，而是先引导我把这份身体感受描述得更清楚：它在哪里、像什么、在什么情境最明显、以及它通常伴随着什么情绪。请用 2 到 3 个温和具体的问题带我继续说，最后只留下 1 个最值得先回答的问题。"
   }
@@ -190,6 +211,7 @@ const EXPLORE_SUGGESTION_SEEDS: readonly SuggestionSeed[] = [
     lane: "explore",
     guideTitle: "先看清这份不安究竟在提醒什么",
     guideBody: "Floyd 会先陪你把这份不安拆开，而不是直接告诉你答案，先辨认它更像担心、羞耻、害怕失去，还是别的什么。",
+    visibleText: "我想探索这份不安真正指向什么。",
     kickoffPrompt:
       "我想从“这份不安真正指向什么”开始。请不要直接给我完整分析，而是先用 1 到 2 句承接我的处境，然后通过 2 到 3 个递进问题，引导我分辨这份不安最强的时候、它在担心什么、以及它最害怕失去什么。最后保留 1 个最值得我先回应的问题。"
   },
@@ -199,6 +221,7 @@ const EXPLORE_SUGGESTION_SEEDS: readonly SuggestionSeed[] = [
     lane: "explore",
     guideTitle: "先为这份状态找到更合适的观察视角",
     guideBody: "这一步会先帮你把眼前状态描述清楚，再决定哪种心理学视角最适合切入，不会一上来就堆术语。",
+    visibleText: "我想用一个更合适的心理学视角理解我现在的状态。",
     kickoffPrompt:
       "我想从“用一个心理学流派理解我现在的状态”开始。请先不要直接给我一大段理论解释，而是先通过 2 到 3 个递进问题，帮我描述清楚我此刻最突出的情绪、关系处境和卡住点，再根据我的回答判断最适合继续深入的心理学视角。最后只留下 1 个最值得我先回答的问题。"
   },
@@ -208,6 +231,7 @@ const EXPLORE_SUGGESTION_SEEDS: readonly SuggestionSeed[] = [
     lane: "explore",
     guideTitle: "先沿着这段记忆找到真正卡住的地方",
     guideBody: "我会先陪你确认是哪一个细节最刺痛、最反复，再一步步接近困扰的真正根部，而不是仓促地下结论。",
+    visibleText: "我想顺着这段记忆，继续寻找困扰的根因。",
     kickoffPrompt:
       "我想从“一段记忆里的困扰根因”开始。请先不要直接定义我的根因，而是先用温和的追问带我继续说清楚：这段记忆里最刺痛的细节是什么、它为什么到现在还会反复出现、以及它最像我现在什么处境。请给我 2 到 3 个递进问题，最后保留 1 个最值得先回答的问题。"
   },
@@ -217,6 +241,7 @@ const EXPLORE_SUGGESTION_SEEDS: readonly SuggestionSeed[] = [
     lane: "explore",
     guideTitle: "先把混乱整理成一个能继续走下去的问题",
     guideBody: "这一步会先帮你把散乱的感受、关系和念头收束成一个更清晰的核心问题，让接下来的探索更有方向。",
+    visibleText: "我想把现在的混乱整理成一个可以继续探索的问题。",
     kickoffPrompt:
       "我想把现在的混乱整理成一个可继续探索的问题。请先不要直接给答案，而是先通过 2 到 3 个问题，帮我分辨我现在最困扰的是情绪、关系、选择，还是自我评价；再帮我收束成一个最值得继续深入的问题。最后只留下 1 个最适合我先回答的问题。"
   }
@@ -229,6 +254,7 @@ function buildSchoolSuggestionSeed(school: (typeof PSYCHOLOGY_SCHOOLS)[number]):
     lane: "school",
     guideTitle: `先用“${school}”为你找到一个进入点`,
     guideBody: `这一步会先用“${school}”的视角帮你找到合适的提问入口，不会直接把整套理论压到你身上，而是先帮你辨认最值得继续说下去的体验。`,
+    visibleText: `我想用“${school}”的视角理解我现在的状态。`,
     kickoffPrompt: `我想以“${school}”作为主要视角开启一轮新的探索。请先不要直接做完整分析，而是先用 1 到 2 句说明这个视角会怎样帮助我理解当前状态，然后通过 2 到 3 个递进问题，引导我把此刻最突出的情绪、关系处境或内在冲突说得更具体。请让问题低压力、可回答，并在结尾只保留 1 个最值得我先回应的问题。`
   };
 }
@@ -264,6 +290,7 @@ function buildMemoryIntentSuggestionSeed(intent: (typeof MEMORY_INTENTS)[number]
         lane: "memory",
         guideTitle: "先把值得保留的记忆线索沉淀下来",
         guideBody: "这一步会先陪你从近期反复出现的情绪、关系片段和身体感受里，找出最值得长期保留的线索，再进入正式对话。",
+        visibleText: "我想先沉淀最近值得保留的记忆线索。",
         kickoffPrompt: MEMORY_INTENT_PROMPTS[intent]
       };
     case "修复记忆碎片":
@@ -273,6 +300,7 @@ function buildMemoryIntentSuggestionSeed(intent: (typeof MEMORY_INTENTS)[number]
         lane: "memory",
         guideTitle: "先把那段模糊或断裂的经历慢慢接回来",
         guideBody: "Floyd 会先帮你辨认这段经历里最模糊、最反复或最刺痛的部分，再带你进入更温和的追问。",
+        visibleText: "我想修复一段模糊、断裂或反复困扰我的经历。",
         kickoffPrompt: MEMORY_INTENT_PROMPTS[intent]
       };
     default:
@@ -282,6 +310,7 @@ function buildMemoryIntentSuggestionSeed(intent: (typeof MEMORY_INTENTS)[number]
         lane: "memory",
         guideTitle: "先从这个记忆入口开始",
         guideBody: "先把这段经历说得更具体一些，再决定怎样继续沉淀或修复。",
+        visibleText: `我想从“${intent}”这个记忆入口开始。`,
         kickoffPrompt: MEMORY_INTENT_PROMPTS[intent]
       };
   }
@@ -296,6 +325,7 @@ function buildExploreIntentSuggestionSeed(intent: (typeof EXPLORE_INTENTS)[numbe
         lane: "explore",
         guideTitle: "先看看表面之下有什么在推动你",
         guideBody: "这一步不会急着给结论，而是先帮你辨认现在的反应、选择和情绪背后，最可能被忽略的心理动因。",
+        visibleText: "我想探索自己反应背后还没被看见的心理动因。",
         kickoffPrompt: buildExploreIntentPrompt(intent)
       };
     case "原生家庭溯源":
@@ -305,6 +335,7 @@ function buildExploreIntentSuggestionSeed(intent: (typeof EXPLORE_INTENTS)[numbe
         lane: "explore",
         guideTitle: "先确认今天的困扰和过去怎样连在一起",
         guideBody: "Floyd 会先带你辨认今天哪些情绪、关系反应像旧经验的回声，再决定怎样继续往成长经历里追问。",
+        visibleText: "我想看看今天的困扰，和过去的成长经历是怎么连起来的。",
         kickoffPrompt: buildExploreIntentPrompt(intent)
       };
     case "困扰根因":
@@ -314,6 +345,7 @@ function buildExploreIntentSuggestionSeed(intent: (typeof EXPLORE_INTENTS)[numbe
         lane: "explore",
         guideTitle: "先把眼前最卡住的地方对准",
         guideBody: "这一步会先帮你从混乱里找出最值得继续追问的核心问题，再进入更深一层的探索。",
+        visibleText: "我想把眼前最卡住的问题继续往深处看看。",
         kickoffPrompt: buildExploreIntentPrompt(intent)
       };
     default:
@@ -323,6 +355,7 @@ function buildExploreIntentSuggestionSeed(intent: (typeof EXPLORE_INTENTS)[numbe
         lane: "explore",
         guideTitle: "先从这个探索入口开始",
         guideBody: "先用几个低压力的问题收束方向，再进入正式探索。",
+        visibleText: `我想从“${intent}”这个方向继续探索。`,
         kickoffPrompt: buildExploreIntentPrompt(intent)
       };
   }
@@ -978,12 +1011,8 @@ export function ChatShell() {
     [authSession?.email]
   );
   const handleAccountEntryClick = useCallback(() => {
-    if (authSession) {
-      setAccountMenuOpen((value) => !value);
-      return;
-    }
-    openAuthDialog();
-  }, [authSession, openAuthDialog]);
+    setAccountMenuOpen((value) => !value);
+  }, []);
   const handleAuthSuccess = useCallback((session: AuthSession) => {
     setAuthSession(session);
     setAuthDialogOpen(false);
@@ -1042,18 +1071,26 @@ export function ChatShell() {
       setDeleteAccountSubmitting(false);
     }
   }, [authSession, deleteAccountReason]);
-  const accountMenuContent = authSession && accountMenuOpen ? (
+  const accountMenuContent = accountMenuOpen ? (
     <div className="account-menu-popover" role="menu" aria-label="账号菜单">
       <div className="account-menu-header">
-        <span>当前账号</span>
-        <strong>{authSession.email}</strong>
+        <span>{authSession ? "当前账号" : "欢迎来到心理学空间"}</span>
+        <strong>{authSession ? authSession.email : "登录后可继续同步对话与额度"}</strong>
       </div>
-      <button type="button" className="account-menu-item" onClick={handleLogout}>
-        退出登录
-      </button>
-      <button type="button" className="account-menu-item" onClick={() => openAccountDialog("delete-account")}>
-        注销账号
-      </button>
+      {authSession ? (
+        <>
+          <button type="button" className="account-menu-item" onClick={handleLogout}>
+            退出登录
+          </button>
+          <button type="button" className="account-menu-item" onClick={() => openAccountDialog("delete-account")}>
+            注销账号
+          </button>
+        </>
+      ) : (
+        <button type="button" className="account-menu-item" onClick={openAuthDialog}>
+          立即登录
+        </button>
+      )}
       <button type="button" className="account-menu-item" onClick={() => openAccountDialog("privacy")}>
         隐私协议
       </button>
@@ -1714,9 +1751,10 @@ export function ChatShell() {
   );
 
   const launchIntentConversation = useCallback(
-    async (prompt: string) => {
-      const nextPrompt = prompt.trim();
-      if (!nextPrompt) {
+    async ({ requestText, visibleText }: { requestText: string; visibleText?: string }) => {
+      const nextRequestText = requestText.trim();
+      const nextVisibleText = (visibleText?.trim() || requestText.trim()).trim();
+      if (!nextRequestText || !nextVisibleText) {
         return;
       }
 
@@ -1744,18 +1782,18 @@ export function ChatShell() {
       dispatch(
         startFreshConversation({
           conversationId,
-          composerText: nextPrompt
+          composerText: nextVisibleText
         })
       );
       dispatch(
         appendUserMessage({
           conversationId,
-          text: nextPrompt,
+          text: nextVisibleText,
           attachments: []
         })
       );
       dispatch(clearComposer());
-      await startStream(nextPrompt, conversationId, []);
+      await startStream(nextRequestText, conversationId, []);
     },
     [chat.stream.runId, clearActiveRun, dispatch, persistConversationId, startStream]
   );
@@ -1770,8 +1808,12 @@ export function ChatShell() {
     }
 
     const prompt = pendingSuggestionChip.kickoffPrompt;
+    const visibleText = pendingSuggestionChip.visibleText || pendingSuggestionChip.label;
     closeSuggestionGuide();
-    await launchIntentConversation(prompt);
+    await launchIntentConversation({
+      requestText: prompt,
+      visibleText
+    });
   }, [closeSuggestionGuide, launchIntentConversation, pendingSuggestionChip]);
 
   const openHistoryConversation = useCallback(
@@ -1960,7 +2002,22 @@ export function ChatShell() {
       }
     };
 
-    void loadHistory();
+    const idleCallbackId =
+      typeof window.requestIdleCallback === "function"
+        ? window.requestIdleCallback(() => {
+            void loadHistory();
+          }, { timeout: 800 })
+        : window.setTimeout(() => {
+            void loadHistory();
+          }, 220);
+
+    return () => {
+      if (typeof window.cancelIdleCallback === "function" && typeof idleCallbackId === "number") {
+        window.cancelIdleCallback(idleCallbackId);
+        return;
+      }
+      window.clearTimeout(idleCallbackId);
+    };
   }, [chat.conversationId, chat.messages.length, dispatch, persistConversationId, recovering]);
 
   useEffect(() => {
@@ -2269,7 +2326,7 @@ export function ChatShell() {
   }, [hasConversation]);
 
   useEffect(() => {
-    if (!authSession?.sessionToken) {
+    if (!authSession?.sessionToken || (!hasConversation && activeModule !== "profile")) {
       setBillingSummary(null);
       setAuditEvents([]);
       return;
@@ -2277,23 +2334,30 @@ export function ChatShell() {
 
     const loadRuntimeViews = async () => {
       try {
-        const [account, auditPage] = await Promise.all([
-          fetchBillingAccount(),
-          fetchAuditEvents({
-            userId: authSession.userId,
-            pageNo: 1,
-            pageSize: 5
-          })
-        ]);
+        if (activeModule === "profile") {
+          const [account, auditPage] = await Promise.all([
+            fetchBillingAccount(),
+            fetchAuditEvents({
+              userId: authSession.userId,
+              pageNo: 1,
+              pageSize: 5
+            })
+          ]);
+          applyBillingSummary(account);
+          setAuditEvents(
+            auditPage.items.map((item) => ({
+              id: item.id,
+              eventType: item.eventType,
+              createdAt: item.createdAt,
+              sourceService: item.sourceService
+            }))
+          );
+          return;
+        }
+
+        const account = await fetchBillingAccount();
         applyBillingSummary(account);
-        setAuditEvents(
-          auditPage.items.map((item) => ({
-            id: item.id,
-            eventType: item.eventType,
-            createdAt: item.createdAt,
-            sourceService: item.sourceService
-          }))
-        );
+        setAuditEvents([]);
       } catch {
         setBillingSummary(null);
         setAuditEvents([]);
@@ -2301,7 +2365,7 @@ export function ChatShell() {
     };
 
     void loadRuntimeViews();
-  }, [applyBillingSummary, authSession]);
+  }, [activeModule, applyBillingSummary, authSession, hasConversation]);
 
   useEffect(() => {
     if (!authSession?.sessionToken) {
@@ -2427,8 +2491,8 @@ export function ChatShell() {
                   <button
                     type="button"
                     className="toolbar-quick-action icon-only"
-                    aria-label={authSession ? `当前账号 ${authSession.email}` : "邮箱登录"}
-                    title={authSession ? authSession.email : "邮箱登录"}
+                    aria-label={authSession ? `当前账号 ${authSession.email}` : "打开账号菜单"}
+                    title={authSession ? authSession.email : "账号菜单"}
                     onClick={handleAccountEntryClick}
                   >
                     <AccountEntryIcon />
@@ -2453,8 +2517,8 @@ export function ChatShell() {
                 <button
                   type="button"
                   className={`toolbar-login ${authSession ? "" : "icon-only"}`.trim()}
-                  aria-label={authSession ? `已登录，当前账号 ${authSession.email}` : "邮箱登录"}
-                  title={authSession ? authSession.email : "邮箱登录"}
+                  aria-label={authSession ? `已登录，当前账号 ${authSession.email}` : "打开账号菜单"}
+                  title={authSession ? authSession.email : "账号菜单"}
                   onClick={handleAccountEntryClick}
                 >
                   {authSession ? authSession.email : <AccountEntryIcon />}
@@ -2734,7 +2798,7 @@ export function ChatShell() {
               </div>
             </div>
           ) : activeModule === "memory-map" ? (
-            <MemoryStarMapPanel
+            <LazyMemoryStarMapPanel
               currentConversationId={chat.conversationId}
               currentUserId={authSession?.userId ?? null}
               refreshKey={memoryMapRefreshKey}
@@ -3058,7 +3122,9 @@ export function ChatShell() {
                           </button>
                         </div>
                         <div className="message-content message-markdown">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{renderedText}</ReactMarkdown>
+                          <Suspense fallback={<div className="message-markdown-fallback">{renderedText}</div>}>
+                            <LazyChatMessageMarkdown content={renderedText} />
+                          </Suspense>
                           {message.status === "streaming" ? <span className="message-cursor" aria-hidden="true" /> : null}
                         </div>
                       </div>
@@ -3345,7 +3411,7 @@ export function ChatShell() {
       {authDialogOpen ? (
         <div className="suggestion-guide-modal-backdrop" onClick={closeAuthDialog}>
           <div className="auth-dialog-modal" role="dialog" aria-modal="true" aria-label="邮箱验证码登录" onClick={(event) => event.stopPropagation()}>
-            <EmailLoginCard mode="modal" onSuccess={handleAuthSuccess} onCancel={closeAuthDialog} />
+            <LazyEmailLoginCard mode="modal" onSuccess={handleAuthSuccess} onCancel={closeAuthDialog} />
           </div>
         </div>
       ) : null}
