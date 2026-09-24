@@ -1,9 +1,10 @@
 import type { FastifyInstance } from "fastify";
 
 import { env } from "../../config/env";
-import { createSuccess } from "../../packages/contracts/api";
+import { createFailure, createSuccess, ERROR_CODES } from "../../packages/contracts/api";
 import { proxyJavaJson } from "../../packages/domain-clients/java-service-proxy";
 import { extractExternalHeaders } from "../../packages/contracts/api";
+import { verifyPrincipal } from "../../packages/auth/verified-principal";
 
 const DEGRADED_PLANS = [
   {
@@ -40,19 +41,31 @@ function isSeedUser(email?: string): boolean {
 export const billingV2Routes = async (app: FastifyInstance) => {
   app.get("/account", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply.code(401).send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "请先登录后再查看额度。"));
+      return;
+    }
+    const trustedHeaders = {
+      ...externalHeaders,
+      appId: principal.appId,
+      userId: principal.userId,
+      sessionId: principal.sessionId,
+      userEmail: principal.email
+    };
     let payload;
     try {
       payload = await proxyJavaJson<Record<string, unknown>>({
         baseUrl: env.javaBillingBaseUrl,
         path: "/v2/billing/account",
         method: "GET",
-        headers: externalHeaders
+        headers: trustedHeaders
       });
     } catch (error) {
       if (!env.localDebugAllowDegraded) {
         throw error;
       }
-      const seedUser = isSeedUser(externalHeaders.userEmail);
+      const seedUser = isSeedUser(principal.email);
       payload = createSuccess(externalHeaders.requestId, {
         plan: seedUser ? "seed-gift" : "starter",
         monthlyTokenLimit: seedUser ? 100 : 20,
@@ -71,13 +84,24 @@ export const billingV2Routes = async (app: FastifyInstance) => {
 
   app.get("/overview", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply.code(401).send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "请先登录后再查看额度。"));
+      return;
+    }
     let payload;
     try {
       payload = await proxyJavaJson<Record<string, unknown>>({
         baseUrl: env.javaBillingBaseUrl,
         path: "/v2/billing/overview",
         method: "GET",
-        headers: externalHeaders
+        headers: {
+          ...externalHeaders,
+          appId: principal.appId,
+          userId: principal.userId,
+          sessionId: principal.sessionId,
+          userEmail: principal.email
+        }
       });
     } catch (error) {
       if (!env.localDebugAllowDegraded) {

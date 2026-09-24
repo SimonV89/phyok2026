@@ -5,6 +5,7 @@ import { z } from "zod";
 import { env } from "../../config/env";
 import { createFailure, createSuccess, ERROR_CODES, extractExternalHeaders } from "../../packages/contracts/api";
 import { proxyJavaJson } from "../../packages/domain-clients/java-service-proxy";
+import { verifyPrincipal } from "../../packages/auth/verified-principal";
 
 const createAlipayOrderSchema = z.object({
   planId: z.enum(["starter", "standard", "unlimited"]),
@@ -20,6 +21,11 @@ const DEGRADED_PLAN_AMOUNT_FEN: Record<z.infer<typeof createAlipayOrderSchema>["
 export const paymentsV2Routes = async (app: FastifyInstance) => {
   app.post("/alipay/create", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply.code(401).send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "请先登录后再创建订单。"));
+      return;
+    }
     const parsed = createAlipayOrderSchema.safeParse(request.body);
     if (!parsed.success) {
       await reply.code(400).send(
@@ -36,7 +42,13 @@ export const paymentsV2Routes = async (app: FastifyInstance) => {
         baseUrl: env.javaPaymentBaseUrl,
         path: "/v2/payments/alipay/create",
         method: "POST",
-        headers: externalHeaders,
+        headers: {
+          ...externalHeaders,
+          appId: principal.appId,
+          userId: principal.userId,
+          sessionId: principal.sessionId,
+          userEmail: principal.email
+        },
         body: parsed.data
       });
     } catch (error) {
@@ -64,6 +76,11 @@ export const paymentsV2Routes = async (app: FastifyInstance) => {
 
   app.get("/orders/:orderNo", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply.code(401).send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "请先登录后再查看订单。"));
+      return;
+    }
     const orderNo = z.string().trim().min(1).safeParse((request.params as { orderNo?: string }).orderNo);
     const refresh = z.coerce.boolean().safeParse((request.query as { refresh?: string | boolean }).refresh ?? false);
     if (!orderNo.success) {
@@ -77,13 +94,32 @@ export const paymentsV2Routes = async (app: FastifyInstance) => {
 
     let payload;
     try {
+      const trustedHeaders = {
+        ...externalHeaders,
+        appId: principal.appId,
+        userId: principal.userId,
+        sessionId: principal.sessionId,
+        userEmail: principal.email
+      };
       payload = await proxyJavaJson<Record<string, unknown>>({
         baseUrl: env.javaPaymentBaseUrl,
         path: `/v2/payments/orders/${encodeURIComponent(orderNo.data)}`,
         method: "GET",
-        headers: externalHeaders,
-        query: refresh.success && refresh.data ? { refresh: "true" } : undefined
+        headers: trustedHeaders
       });
+      if (payload.code === "OK" && payload.data?.buyerEmail !== principal.email) {
+        await reply.code(404).send(createFailure(externalHeaders.requestId, "PAYMENT_ORDER_NOT_FOUND", "订单不存在。"));
+        return;
+      }
+      if (payload.code === "OK" && refresh.success && refresh.data) {
+        payload = await proxyJavaJson<Record<string, unknown>>({
+          baseUrl: env.javaPaymentBaseUrl,
+          path: `/v2/payments/orders/${encodeURIComponent(orderNo.data)}`,
+          method: "GET",
+          headers: trustedHeaders,
+          query: { refresh: "true" }
+        });
+      }
     } catch (error) {
       if (!env.localDebugAllowDegraded) {
         throw error;

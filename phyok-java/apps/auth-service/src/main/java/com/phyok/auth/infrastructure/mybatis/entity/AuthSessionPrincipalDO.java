@@ -5,6 +5,7 @@ public class AuthSessionPrincipalDO {
     private String appId;
     private String userId;
     private String sessionId;
+    private String email;
 
     public String getTenantId() {
         return tenantId;
@@ -36,5 +37,13 @@ public class AuthSessionPrincipalDO {
 
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
     }
 }

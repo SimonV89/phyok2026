@@ -16,6 +16,7 @@
     "@fastify/helmet": "^13.0.2",
     "@fastify/multipart": "^10.1.1",
     "@fastify/rate-limit": "^10.3.0",
+    "cos-nodejs-sdk-v5": "^3.0.0",
     "dotenv": "^17.3.1",
     "fastify": "^5.8.2",
     "mammoth": "^1.12.3",

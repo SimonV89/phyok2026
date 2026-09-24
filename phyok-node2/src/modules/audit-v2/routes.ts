@@ -4,6 +4,7 @@ import { z } from "zod";
 import { env } from "../../config/env";
 import { proxyJavaJson } from "../../packages/domain-clients/java-service-proxy";
 import { createFailure, createSuccess, ERROR_CODES, extractExternalHeaders } from "../../packages/contracts/api";
+import { verifyPrincipal } from "../../packages/auth/verified-principal";
 
 const auditSearchQuerySchema = z.object({
   tenantId: z.string().trim().optional(),
@@ -19,6 +20,13 @@ const auditSearchQuerySchema = z.object({
 export const auditV2Routes = async (app: FastifyInstance) => {
   app.get("/events/search", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply.code(401).send(
+        createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "请先登录后再查看记录。")
+      );
+      return;
+    }
     const parsed = auditSearchQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       await reply.code(400).send(
@@ -35,11 +43,17 @@ export const auditV2Routes = async (app: FastifyInstance) => {
         baseUrl: env.javaAuditBaseUrl,
         path: "/v2/audits/events/search",
         method: "GET",
-        headers: externalHeaders,
+        headers: {
+          ...externalHeaders,
+          appId: principal.appId,
+          userId: principal.userId,
+          sessionId: principal.sessionId,
+          userEmail: principal.email
+        },
         query: {
-          tenantId: parsed.data.tenantId,
-          appId: parsed.data.appId,
-          userId: parsed.data.userId,
+          tenantId: principal.tenantId,
+          appId: principal.appId,
+          userId: principal.userId,
           eventType: parsed.data.eventType,
           entityType: parsed.data.entityType,
           entityId: parsed.data.entityId,
@@ -59,8 +73,8 @@ export const auditV2Routes = async (app: FastifyInstance) => {
           {
             id: "audit_local_001",
             tenantId: "tenant-demo",
-            appId: parsed.data.appId ?? externalHeaders.appId,
-            userId: parsed.data.userId ?? "local-debug-user",
+            appId: principal.appId,
+            userId: principal.userId,
             traceId: `${externalHeaders.traceId}:local`,
             requestId: externalHeaders.requestId,
             eventType: "GRAPH_TRACE_START",
@@ -73,8 +87,8 @@ export const auditV2Routes = async (app: FastifyInstance) => {
           {
             id: "audit_local_002",
             tenantId: "tenant-demo",
-            appId: parsed.data.appId ?? externalHeaders.appId,
-            userId: parsed.data.userId ?? "local-debug-user",
+            appId: principal.appId,
+            userId: principal.userId,
             traceId: `${externalHeaders.traceId}:local`,
             requestId: externalHeaders.requestId,
             eventType: "GRAPH_TRACE_COMPLETE",

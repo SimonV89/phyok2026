@@ -2,8 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
 import { env } from "../../config/env";
-import { createSuccess, extractExternalHeaders } from "../../packages/contracts/api";
-import { getDomainClients } from "../../packages/domain-clients";
+import { createFailure, createSuccess, ERROR_CODES, extractExternalHeaders } from "../../packages/contracts/api";
+import { verifyPrincipal } from "../../packages/auth/verified-principal";
 import { proxyJavaJson } from "../../packages/domain-clients/java-service-proxy";
 import { getConversationSummaryPage } from "../chat-v2/runtime";
 
@@ -93,8 +93,9 @@ function buildPairKey(left: string, right: string): string {
   return left <= right ? `${left}::${right}` : `${right}::${left}`;
 }
 
-function buildLocalDebugStarMap(limit: number, timelineRoot?: (typeof TIMELINE_ORDER)[number]) {
+function buildLocalDebugStarMap(ownerScope: string, limit: number, timelineRoot?: (typeof TIMELINE_ORDER)[number]) {
   const summaryPage = getConversationSummaryPage({
+    ownerScope,
     pageNo: 1,
     pageSize: limit
   });
@@ -182,30 +183,17 @@ function buildLocalDebugStarMap(limit: number, timelineRoot?: (typeof TIMELINE_O
 export const memoryV2Routes = async (app: FastifyInstance) => {
   app.get("/star-map", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
-    const domainClients = getDomainClients();
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply.code(401).send(
+        createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "请先登录后再查看记忆星图。")
+      );
+      return;
+    }
     const parsed = starMapQuerySchema.safeParse(request.query);
     const timelineRoot = normalizeTimelineRoot(parsed.success ? parsed.data.timelineRoot : undefined);
     const limit = parsed.success ? (parsed.data.limit ?? 180) : 180;
     const allowDegraded = env.localDebugAllowDegraded || process.env.NODE_ENV !== "production";
-    let resolvedUserId = parsed.success ? (parsed.data.userId || externalHeaders.userId) : externalHeaders.userId;
-    let resolvedAppId = parsed.success ? (parsed.data.appId || externalHeaders.appId) : externalHeaders.appId;
-
-    if (externalHeaders.authorization?.trim()) {
-      try {
-        const identity = await domainClients.verifyToken({
-          authorization: externalHeaders.authorization,
-          requestId: externalHeaders.requestId,
-          traceId: externalHeaders.traceId,
-          appId: externalHeaders.appId,
-          userId: externalHeaders.userId || "guest_anonymous",
-          sessionId: externalHeaders.sessionId || "session_unknown"
-        });
-        resolvedUserId = identity.userId || resolvedUserId;
-        resolvedAppId = identity.appId || resolvedAppId;
-      } catch {
-        // Fall back to header/query values so the route remains readable in degraded environments.
-      }
-    }
 
     let payload;
     try {
@@ -215,27 +203,36 @@ export const memoryV2Routes = async (app: FastifyInstance) => {
       if (timelineRoot) {
         query.timelineRoot = timelineRoot;
       }
-      if (resolvedUserId) {
-        query.userId = resolvedUserId;
-      }
-      if (resolvedAppId) {
-        query.appId = resolvedAppId;
-      }
+      query.userId = principal.userId;
+      query.appId = principal.appId;
+      query.tenantId = principal.tenantId;
       payload = await proxyJavaJson<Record<string, unknown>>({
         baseUrl: env.javaDomainBaseUrl,
         path: "/v2/memories/star-map",
         method: "GET",
-        headers: externalHeaders,
+        headers: {
+          ...externalHeaders,
+          appId: principal.appId,
+          userId: principal.userId,
+          sessionId: principal.sessionId,
+          userEmail: principal.email
+        },
         query
       });
       if (allowDegraded && payload.code !== "OK") {
-        payload = createSuccess(externalHeaders.requestId, buildLocalDebugStarMap(limit, timelineRoot));
+        payload = createSuccess(
+          externalHeaders.requestId,
+          buildLocalDebugStarMap(principal.ownerScope, limit, timelineRoot)
+        );
       }
     } catch (error) {
       if (!allowDegraded) {
         throw error;
       }
-      payload = createSuccess(externalHeaders.requestId, buildLocalDebugStarMap(limit, timelineRoot));
+      payload = createSuccess(
+        externalHeaders.requestId,
+        buildLocalDebugStarMap(principal.ownerScope, limit, timelineRoot)
+      );
     }
 
     await reply.code(payload.code === "OK" ? 200 : 400).send(payload);

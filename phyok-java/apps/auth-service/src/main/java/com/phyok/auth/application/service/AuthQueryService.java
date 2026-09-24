@@ -18,14 +18,15 @@ public class AuthQueryService {
     public AuthPrincipalView verifyToken(String sessionTokenHash) {
         AuthSessionPrincipalDO principal = authSessionRepository.findPrincipalBySessionTokenHash(sessionTokenHash);
         if (principal == null) {
-            return new AuthPrincipalView("unknown", "unknown", "unknown", "unknown", List.of("ANONYMOUS"));
+            return new AuthPrincipalView("unknown", "unknown", "unknown", "unknown", List.of("ANONYMOUS"), null);
         }
         return new AuthPrincipalView(
                 principal.getTenantId(),
                 principal.getAppId(),
                 principal.getUserId(),
                 principal.getSessionId(),
-                List.of("USER")
+                List.of("USER"),
+                principal.getEmail()
         );
     }
 }

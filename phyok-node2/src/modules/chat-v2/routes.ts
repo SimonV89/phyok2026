@@ -7,7 +7,8 @@ import {
   ERROR_CODES,
   extractExternalHeaders
 } from "../../packages/contracts/api";
-import { getUploadedAsset } from "../media-v2/asset-store";
+import { verifyPrincipal } from "../../packages/auth/verified-principal";
+import { getOwnedUploadedAsset } from "../media-v2/asset-store";
 import {
   attachChatRunStream,
   createChatRun,
@@ -15,6 +16,7 @@ import {
   getConversationHistoryPage,
   getConversationSummaryPage,
   getChatRunSnapshot,
+  inspectConversationAccess,
   stopChatRun,
   type ChatV2Attachment
 } from "./runtime";
@@ -75,7 +77,8 @@ function normalizeAttachments(attachments: z.infer<typeof attachmentSchema>[]): 
   }));
 }
 
-function validateAttachments(attachments: ChatV2Attachment[]): { ok: true } | { ok: false; message: string } {
+function validateAttachments(attachments: ChatV2Attachment[], ownerScope: string): { ok: true; attachments: ChatV2Attachment[] } | { ok: false; message: string } {
+  const validated: ChatV2Attachment[] = [];
   for (const attachment of attachments) {
     if (!attachment.id || attachment.id.startsWith("attachment-")) {
       return {
@@ -83,15 +86,22 @@ function validateAttachments(attachments: ChatV2Attachment[]): { ok: true } | { 
         message: `附件 ${attachment.name} 缺少有效 assetId，请重新上传后再发送。`
       };
     }
-    const asset = getUploadedAsset(attachment.id);
+    const asset = getOwnedUploadedAsset(attachment.id, ownerScope);
     if (!asset) {
       return {
         ok: false,
         message: `附件 ${attachment.name} 已失效或当前节点未找到，请重新上传。`
       };
     }
+    validated.push({
+      id: asset.assetId,
+      name: asset.fileName,
+      mimeType: asset.mimeType,
+      size: asset.size,
+      kind: asset.kind
+    });
   }
-  return { ok: true };
+  return { ok: true, attachments: validated };
 }
 
 function getStringHeader(headers: Record<string, unknown>, name: string): string | undefined {
@@ -117,7 +127,15 @@ export const chatV2Routes = async (app: FastifyInstance) => {
     }
 
     const attachments = normalizeAttachments(parsed.data.attachments ?? []);
-    const attachmentValidation = validateAttachments(attachments);
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply
+        .code(401)
+        .send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "缺少会话身份，无法创建对话。"));
+      return;
+    }
+    const ownerScope = principal.ownerScope;
+    const attachmentValidation = validateAttachments(attachments, ownerScope);
     if (!attachmentValidation.ok) {
       await reply
         .code(400)
@@ -125,22 +143,34 @@ export const chatV2Routes = async (app: FastifyInstance) => {
       return;
     }
 
+    if (parsed.data.conversationId?.trim()) {
+      const access = inspectConversationAccess(parsed.data.conversationId, ownerScope);
+      if (access.exists && !access.allowed) {
+        await reply
+          .code(404)
+          .send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_RUN_NOT_FOUND, "Conversation not found."));
+        return;
+      }
+    }
+
     const run = createChatRun({
       authorization: externalHeaders.authorization,
       requestId: externalHeaders.requestId,
       traceId: externalHeaders.traceId,
-      appId: externalHeaders.appId,
-      userId: getStringHeader(request.headers, "x-user-id"),
-      sessionId: getStringHeader(request.headers, "x-session-id"),
-      userEmail: externalHeaders.userEmail,
+      appId: principal.appId,
+      ownerScope,
+      userId: principal.userId,
+      sessionId: principal.sessionId,
+      userEmail: principal.email,
       conversationId: parsed.data.conversationId,
       message: parsed.data.message,
-      attachments
+      attachments: attachmentValidation.attachments
     });
 
     reply.hijack();
     const connection = attachChatRunStream({
       runId: run.runId,
+      ownerScope,
       reply: reply.raw,
       fromSeq: 0,
       headers: {
@@ -185,9 +215,17 @@ export const chatV2Routes = async (app: FastifyInstance) => {
       return;
     }
 
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply.code(401).send(
+        createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "请先登录后再重连对话。")
+      );
+      return;
+    }
     reply.hijack();
     const connection = attachChatRunStream({
       runId: params.data.runId,
+      ownerScope: principal.ownerScope,
       reply: reply.raw,
       fromSeq: query.data.fromSeq,
       headers: {
@@ -219,6 +257,13 @@ export const chatV2Routes = async (app: FastifyInstance) => {
 
   app.get("/state", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply
+        .code(401)
+        .send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "缺少会话身份，无法读取状态。"));
+      return;
+    }
     const parsed = runIdQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       await reply
@@ -227,7 +272,7 @@ export const chatV2Routes = async (app: FastifyInstance) => {
       return;
     }
 
-    const state = getChatRunSnapshot(parsed.data.runId);
+    const state = getChatRunSnapshot(parsed.data.runId, principal.ownerScope);
     if (!state) {
       await reply
         .code(404)
@@ -240,6 +285,13 @@ export const chatV2Routes = async (app: FastifyInstance) => {
 
   app.get("/history", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply
+        .code(401)
+        .send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "缺少会话身份，无法读取历史记录。"));
+      return;
+    }
     const parsed = historyQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       await reply.code(400).send(
@@ -250,7 +302,16 @@ export const chatV2Routes = async (app: FastifyInstance) => {
       return;
     }
 
+    const access = inspectConversationAccess(parsed.data.conversationId, principal.ownerScope);
+    if (access.exists && !access.allowed) {
+      await reply
+        .code(404)
+        .send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_RUN_NOT_FOUND, "Conversation not found."));
+      return;
+    }
+
     const history = getConversationHistoryPage({
+      ownerScope: principal.ownerScope,
       conversationId: parsed.data.conversationId,
       cursor: parsed.data.cursor,
       limit: parsed.data.limit ?? 20
@@ -266,6 +327,13 @@ export const chatV2Routes = async (app: FastifyInstance) => {
 
   app.get("/history/conversations", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply
+        .code(401)
+        .send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "缺少会话身份，无法读取会话列表。"));
+      return;
+    }
     const parsed = conversationListQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       await reply.code(400).send(
@@ -277,6 +345,7 @@ export const chatV2Routes = async (app: FastifyInstance) => {
     }
 
     const page = getConversationSummaryPage({
+      ownerScope: principal.ownerScope,
       pageNo: parsed.data.pageNo ?? 1,
       pageSize: parsed.data.pageSize ?? 9,
       keyword: parsed.data.keyword
@@ -287,6 +356,13 @@ export const chatV2Routes = async (app: FastifyInstance) => {
 
   app.delete("/history/conversations/:conversationId", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply
+        .code(401)
+        .send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "缺少会话身份，无法删除会话。"));
+      return;
+    }
     const parsed = conversationParamsSchema.safeParse(request.params);
     if (!parsed.success) {
       await reply.code(400).send(
@@ -297,7 +373,7 @@ export const chatV2Routes = async (app: FastifyInstance) => {
       return;
     }
 
-    const result = deleteConversationHistory(parsed.data.conversationId);
+    const result = deleteConversationHistory(principal.ownerScope, parsed.data.conversationId);
     if (!result.deleted) {
       await reply
         .code(404)
@@ -310,6 +386,13 @@ export const chatV2Routes = async (app: FastifyInstance) => {
 
   app.post("/stop", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply
+        .code(401)
+        .send(createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "缺少会话身份，无法停止运行。"));
+      return;
+    }
     const parsed = stopBodySchema.safeParse(request.body);
     if (!parsed.success) {
       await reply
@@ -318,7 +401,7 @@ export const chatV2Routes = async (app: FastifyInstance) => {
       return;
     }
 
-    const result = stopChatRun(parsed.data.runId);
+    const result = stopChatRun(parsed.data.runId, principal.ownerScope);
     if (!result.found) {
       await reply
         .code(404)

@@ -20,6 +20,8 @@ services:
         condition: service_started
     environment:
       PORT: ${CHAT_WEB_PORT:-3001}
+      JAVA_AUTH_BASE_URL: http://auth-service:18081
+      JAVA_PRIVACY_BASE_URL: http://privacy-service:18088
     ports:
       - "${CHAT_WEB_PORT:-3001}:3001"
 
@@ -59,7 +61,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-phyok}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_pg}
     ports:
-      - "15432:5432"
+      - "127.0.0.1:15432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -74,7 +76,7 @@ services:
     restart: unless-stopped
     command: ["sh", "-c", "redis-server --requirepass ${REDIS_PASSWORD:-change_me_redis}"]
     ports:
-      - "16379:6379"
+      - "127.0.0.1:16379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -90,7 +92,7 @@ services:
     environment:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-}
     ports:
-      - "16333:6333"
+      - "127.0.0.1:16333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
 
@@ -113,7 +115,7 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
       KAFKA_LOG_DIRS: /var/lib/kafka/data
     ports:
-      - "19092:9092"
+      - "127.0.0.1:19092:9092"
     volumes:
       - kafka_data:/var/lib/kafka/data
 
@@ -146,7 +148,7 @@ services:
       TENCENT_SES_REGION: ${TENCENT_SES_REGION:-ap-hongkong}
       TENCENT_SES_API_ENDPOINT: ${TENCENT_SES_API_ENDPOINT:-ses.ap-hongkong.tencentcloudapi.com}
     ports:
-      - "${AUTH_PORT:-18081}:18081"
+      - "127.0.0.1:${AUTH_PORT:-18081}:18081"
 
   tenant-service:
     build:
@@ -162,7 +164,7 @@ services:
         condition: service_healthy
     environment: *java_db_env
     ports:
-      - "${TENANT_PORT:-18082}:18082"
+      - "127.0.0.1:${TENANT_PORT:-18082}:18082"
 
   memory-service:
     build:
@@ -189,7 +191,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
     ports:
-      - "${MEMORY_PORT:-18083}:18083"
+      - "127.0.0.1:${MEMORY_PORT:-18083}:18083"
 
   memory-embedding-consumer:
     build:
@@ -230,7 +232,7 @@ services:
         condition: service_started
     environment: *java_db_env
     ports:
-      - "${KNOWLEDGE_PORT:-18084}:18084"
+      - "127.0.0.1:${KNOWLEDGE_PORT:-18084}:18084"
 
   billing-service:
     build:
@@ -250,7 +252,7 @@ services:
         condition: service_started
     environment: *java_db_env
     ports:
-      - "${BILLING_PORT:-18085}:18085"
+      - "127.0.0.1:${BILLING_PORT:-18085}:18085"
 
   payment-service:
     build:
@@ -270,7 +272,7 @@ services:
       - ../../env2
     environment: *java_db_env
     ports:
-      - "${PAYMENT_PORT:-18086}:18086"
+      - "127.0.0.1:${PAYMENT_PORT:-18086}:18086"
 
   audit-service:
     build:
@@ -288,7 +290,7 @@ services:
         condition: service_started
     environment: *java_db_env
     ports:
-      - "${AUDIT_PORT:-18087}:18087"
+      - "127.0.0.1:${AUDIT_PORT:-18087}:18087"
 
   privacy-service:
     build:
@@ -306,7 +308,7 @@ services:
         condition: service_started
     environment: *java_db_env
     ports:
-      - "${PRIVACY_PORT:-18088}:18088"
+      - "127.0.0.1:${PRIVACY_PORT:-18088}:18088"
 
   ops-admin-service:
     build:
@@ -324,7 +326,7 @@ services:
         condition: service_healthy
     environment: *java_db_env
     ports:
-      - "${OPS_ADMIN_PORT:-18089}:18089"
+      - "127.0.0.1:${OPS_ADMIN_PORT:-18089}:18089"
 
 volumes:
   postgres_data:

@@ -56,16 +56,16 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: memory-service
+                name: node2-runtime
                 port:
-                  number: 18083
+                  number: 3002
           - path: /v2/privacy
             pathType: Prefix
             backend:
               service:
-                name: privacy-service
+                name: node2-runtime
                 port:
-                  number: 18088
+                  number: 3002
           - path: /v2/knowledge
             pathType: Prefix
             backend:
@@ -77,9 +77,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: payment-service
+                name: node2-runtime
                 port:
-                  number: 18086
+                  number: 3002
           - path: /api/pay/alipay/notify
             pathType: Prefix
             backend:

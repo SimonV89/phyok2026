@@ -7,6 +7,7 @@ public record AuthPrincipalView(
         String appId,
         String userId,
         String sessionId,
-        List<String> roles
+        List<String> roles,
+        String email
 ) {
 }

@@ -99,10 +99,6 @@ function getTextFromContent(content: unknown): string {
     .join("");
 }
 
-export function bufferToDataUrl(buffer: Buffer, mimeType: string): string {
-  return `data:${mimeType};base64,${buffer.toString("base64")}`;
-}
-
 function bufferToBlobPart(buffer: Buffer): ArrayBuffer {
   const bytes = Uint8Array.from(buffer);
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
@@ -240,17 +236,15 @@ async function completeSiliconFlowChat(options: Omit<StreamChatOptions, "onDelta
 }
 
 export async function describeImageWithSiliconFlow(options: {
-  buffer: Buffer;
-  mimeType: string;
+  imageUrl: string;
   prompt: string;
   signal?: AbortSignal;
   timeoutMs?: number;
 }): Promise<string> {
-  const imageUrl = bufferToDataUrl(options.buffer, options.mimeType);
   const messages: ChatMessage[] = [
     {
       role: "system",
-      content: "你是心理探索场景中的视觉理解助手。请准确描述图片内容、情绪线索、关系场景与可进入对话的关键信息，不要编造无法确认的事实。"
+      content: "你是视觉理解助手。请客观描述图片中可见的内容与文字，区分观察和推测；不要凭画面臆断人物的心理状态或经历。"
     },
     {
       role: "user",
@@ -262,14 +256,14 @@ export async function describeImageWithSiliconFlow(options: {
         {
           type: "image_url",
           image_url: {
-            url: imageUrl
+            url: options.imageUrl
           }
         }
       ]
     }
   ];
 
-  const models = [env.siliconFlowVisionFastModel, env.siliconFlowVisionFallbackModel].filter(Boolean);
+  const models = [...new Set([env.siliconFlowVisionFallbackModel, env.siliconFlowVisionFastModel].filter(Boolean))];
   let lastError = "";
   for (const model of models) {
     try {

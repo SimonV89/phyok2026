@@ -168,7 +168,8 @@ public class AuthCommandService {
                 user.getAppId(),
                 user.getId(),
                 session.getId(),
-                List.of("USER")
+                List.of("USER"),
+                normalizedEmail
         );
 
         return Map.of(

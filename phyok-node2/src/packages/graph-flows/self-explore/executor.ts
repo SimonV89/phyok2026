@@ -5,7 +5,6 @@ import {
 import { ERROR_CODES } from "../../contracts/api";
 import type { StreamEventName, SseEventPayloadMap } from "../../contracts/sse";
 import {
-  bufferToDataUrl,
   streamSiliconFlowChat,
   type ChatMessage,
   transcribeAudioWithSiliconFlow
@@ -13,13 +12,15 @@ import {
 import { env } from "../../../config/env";
 import { createInitialSelfExploreState, type SelfExploreState } from "./state";
 import type { ChatV2Attachment } from "../../../modules/chat-v2/runtime";
-import { getUploadedAsset, updateUploadedAsset } from "../../../modules/media-v2/asset-store";
+import { getOwnedUploadedAsset, updateUploadedAsset } from "../../../modules/media-v2/asset-store";
 import { prepareUploadedAsset } from "../../../modules/media-v2/asset-parser";
+import { prepareUploadedImageSummary } from "../../../modules/media-v2/asset-vision";
 
 type Emit = <T extends StreamEventName>(event: T, data: SseEventPayloadMap[T]) => void;
 
 type ExecuteInput = {
   runId: string;
+  ownerScope: string;
   requestId: string;
   conversationId: string;
   query: string;
@@ -515,9 +516,10 @@ function buildResponse(state: SelfExploreState) {
 
 async function buildAttachmentSummary(
   attachment: ChatV2Attachment,
-  signal: AbortSignal
+  signal: AbortSignal,
+  ownerScope: string
 ): Promise<AttachmentUnderstandingResult> {
-  const asset = getUploadedAsset(attachment.id);
+  const asset = getOwnedUploadedAsset(attachment.id, ownerScope);
   if (!asset) {
     return {
       id: attachment.id,
@@ -530,6 +532,9 @@ async function buildAttachmentSummary(
   }
 
   if (attachment.kind === "image") {
+    if (!asset.imageSummary) {
+      await prepareUploadedImageSummary(attachment.id);
+    }
     if (asset.imageSummary) {
       return {
         id: attachment.id,
@@ -540,14 +545,7 @@ async function buildAttachmentSummary(
         parseStatus: asset.parseStatus
       };
     }
-    return {
-      id: attachment.id,
-      name: attachment.name,
-      kind: attachment.kind,
-      mimeType: attachment.mimeType,
-      summary: `${attachment.name}：已接收图片，本轮会直接结合图像内容理解，不再等待额外视觉预处理。`,
-      parseStatus: asset.parseStatus
-    };
+    throw new Error("图片理解失败，请稍后重试。");
   }
 
   if (attachment.kind === "audio") {
@@ -594,7 +592,7 @@ async function buildAttachmentSummary(
     if (asset.parseStatus === "uploaded") {
       preparedAsset = (await prepareUploadedAsset(asset.assetId)) ?? asset;
     } else if (asset.parseStatus === "parsing") {
-      preparedAsset = getUploadedAsset(asset.assetId) ?? asset;
+      preparedAsset = getOwnedUploadedAsset(asset.assetId, ownerScope) ?? asset;
     }
     if (!preparedAsset) {
       return {
@@ -661,17 +659,7 @@ async function buildAttachmentSummary(
   };
 }
 
-function hasUsableImageAttachment(state: SelfExploreState) {
-  return state.attachments.some((attachment) => {
-    if (attachment.kind !== "image") {
-      return false;
-    }
-    const asset = getUploadedAsset(attachment.id);
-    return Boolean(asset?.buffer?.byteLength);
-  });
-}
-
-function buildModelMessages(state: SelfExploreState, includeImageBlocks = true): ChatMessage[] {
+function buildModelMessages(state: SelfExploreState): ChatMessage[] {
   const schoolLabel = getSchoolLabel(state.school);
   const systemPrompt = [buildFloydPersonaPrompt(), buildRolePrompt(state), buildOutputContract(state)].join("\n\n");
 
@@ -688,42 +676,6 @@ function buildModelMessages(state: SelfExploreState, includeImageBlocks = true):
     "请据此直接生成给用户的本轮回答。优先做到：先承接，再洞察，再追问。"
   ];
 
-  const userContentBlocks: Array<
-    | {
-        type: "text";
-        text: string;
-      }
-    | {
-        type: "image_url";
-        image_url: {
-          url: string;
-        };
-      }
-  > = [
-    {
-      type: "text",
-      text: sections.join("\n\n")
-    }
-  ];
-
-  if (includeImageBlocks) {
-    for (const attachment of state.attachments) {
-      if (attachment.kind !== "image") {
-        continue;
-      }
-      const asset = getUploadedAsset(attachment.id);
-      if (!asset) {
-        continue;
-      }
-      userContentBlocks.push({
-        type: "image_url",
-        image_url: {
-          url: bufferToDataUrl(asset.buffer, asset.mimeType)
-        }
-      });
-    }
-  }
-
   return [
     {
       role: "system" as const,
@@ -731,7 +683,7 @@ function buildModelMessages(state: SelfExploreState, includeImageBlocks = true):
     },
     {
       role: "user" as const,
-      content: userContentBlocks
+      content: sections.join("\n\n")
     }
   ];
 }
@@ -788,7 +740,7 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
       return;
     }
     const attachmentSummaries = await Promise.all(
-      state.attachments.map((item) => buildAttachmentSummary(item, input.signal))
+      state.attachments.map((item) => buildAttachmentSummary(item, input.signal, input.ownerScope))
     );
     state.multimodalDigest = {
       summary: attachmentSummaries.map((item) => `- ${item.summary}`).join("\n"),
@@ -987,51 +939,23 @@ export async function executeSelfExploreFlow(input: ExecuteInput) {
     }
 
     try {
-      let completion;
-      try {
-        completion = await streamSiliconFlowChat({
-          model: env.siliconFlowConcludeModel,
-          messages: buildModelMessages(state, true),
-          signal: input.signal,
-          onReasoning: (delta) => {
-            input.emit("thinking.delta", {
-              runId: state.runId,
-              delta
-            });
-          },
-          onDelta: (delta) => {
-            input.emit("message.delta", {
-              runId: state.runId,
-              delta
-            });
-          }
-        });
-      } catch (error) {
-        if (!hasUsableImageAttachment(state)) {
-          throw error;
+      const completion = await streamSiliconFlowChat({
+        model: env.siliconFlowConcludeModel,
+        messages: buildModelMessages(state),
+        signal: input.signal,
+        onReasoning: (delta) => {
+          input.emit("thinking.delta", {
+            runId: state.runId,
+            delta
+          });
+        },
+        onDelta: (delta) => {
+          input.emit("message.delta", {
+            runId: state.runId,
+            delta
+          });
         }
-        input.emit("warning.raised", {
-          runId: state.runId,
-          message: "图像直连理解暂时不可用，已自动回退到图片摘要模式。"
-        });
-        completion = await streamSiliconFlowChat({
-          model: env.siliconFlowConcludeModel,
-          messages: buildModelMessages(state, false),
-          signal: input.signal,
-          onReasoning: (delta) => {
-            input.emit("thinking.delta", {
-              runId: state.runId,
-              delta
-            });
-          },
-          onDelta: (delta) => {
-            input.emit("message.delta", {
-              runId: state.runId,
-              delta
-            });
-          }
-        });
-      }
+      });
 
       state.output.response = completion.text.trim();
       if (completion.reasoning.trim()) {

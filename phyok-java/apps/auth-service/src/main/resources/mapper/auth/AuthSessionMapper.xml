@@ -9,6 +9,7 @@
         <result property="appId" column="app_id"/>
         <result property="userId" column="user_id"/>
         <result property="sessionId" column="session_id"/>
+        <result property="email" column="email"/>
     </resultMap>
 
     <resultMap id="UserAccountResultMap" type="com.phyok.auth.infrastructure.mybatis.entity.UserAccountDO">
@@ -42,7 +43,8 @@
         select s.tenant_id,
                s.app_id,
                s.user_id,
-               s.id as session_id
+               s.id as session_id,
+               u.email
         from user_session s
                  join user_account u
                       on u.id = s.user_id

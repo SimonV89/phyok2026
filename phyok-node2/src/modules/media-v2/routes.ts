@@ -7,9 +7,11 @@ import {
   ERROR_CODES,
   extractExternalHeaders
 } from "../../packages/contracts/api";
+import { verifyPrincipal } from "../../packages/auth/verified-principal";
 import { scheduleUploadedAssetPreparation } from "./asset-parser";
 import { saveUploadedAsset } from "./asset-store";
 import { scheduleUploadedImageSummary } from "./asset-vision";
+import { uploadImageObject } from "./image-object-store";
 import type { UploadAssetKind } from "./types";
 
 function inferAssetKind(mimeType: string): UploadAssetKind {
@@ -35,6 +37,13 @@ function inferAssetKind(mimeType: string): UploadAssetKind {
 export const mediaV2Routes = async (app: FastifyInstance) => {
   app.post("/upload", async (request, reply) => {
     const externalHeaders = extractExternalHeaders(request.headers);
+    const principal = await verifyPrincipal(externalHeaders);
+    if (!principal) {
+      await reply.code(401).send(
+        createFailure(externalHeaders.requestId, ERROR_CODES.BFF_UNAUTHORIZED, "请先登录后再上传附件。")
+      );
+      return;
+    }
     if (!request.isMultipart()) {
       await reply.code(415).send(
         createFailure(
@@ -90,13 +99,27 @@ export const mediaV2Routes = async (app: FastifyInstance) => {
       return;
     }
 
+    let objectKey: string | undefined;
+    if (kind === "image") {
+      try {
+        objectKey = await uploadImageObject(assetId, fileBuffer ?? Buffer.alloc(0), mimeType);
+      } catch {
+        await reply.code(502).send(
+          createFailure(externalHeaders.requestId, ERROR_CODES.BFF_BAD_REQUEST, "图片保存失败，请稍后重试。")
+        );
+        return;
+      }
+    }
+
     const asset = saveUploadedAsset({
       assetId,
+      ownerScope: principal.ownerScope,
       fileName,
       mimeType,
       size,
       kind,
-      buffer: fileBuffer ?? Buffer.alloc(0)
+      buffer: fileBuffer ?? Buffer.alloc(0),
+      objectKey
     });
 
     if (kind === "document") {

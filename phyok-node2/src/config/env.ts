@@ -150,5 +150,10 @@ export const env = {
     "Qwen/Qwen3-VL-32B-Instruct",
     VISION_MODEL_ALIASES
   ),
-  siliconFlowVisionTimeoutMs: readInt(process.env.SILICONFLOW_VISION_TIMEOUT_MS, 45000)
+  siliconFlowVisionTimeoutMs: readInt(process.env.SILICONFLOW_VISION_TIMEOUT_MS, 45000),
+  tencentCosSecretId: process.env.TENCENT_COS_SECRET_ID?.trim() || "",
+  tencentCosSecretKey: process.env.TENCENT_COS_SECRET_KEY?.trim() || "",
+  tencentCosBucket: process.env.TENCENT_COS_BUCKET?.trim() || "",
+  tencentCosRegion: process.env.TENCENT_COS_REGION?.trim() || "",
+  tencentCosPathPrefix: process.env.TENCENT_COS_PATH_PREFIX?.trim().replace(/^\/+|\/+$/g, "") || ""
 };

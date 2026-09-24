@@ -1,5 +1,7 @@
+import { env } from "../../config/env";
 import { describeImageWithSiliconFlow } from "../../packages/ai/siliconflow";
 import { getUploadedAsset, updateUploadedAsset } from "./asset-store";
+import { signImageReadUrl } from "./image-object-store";
 
 const imageSummaryJobs = new Map<string, Promise<void>>();
 
@@ -16,26 +18,33 @@ export async function prepareUploadedImageSummary(assetId: string): Promise<void
 
   const job = (async () => {
     try {
-      const summary = await describeImageWithSiliconFlow({
-        buffer: asset.buffer,
-        mimeType: asset.mimeType,
-        prompt: "请用简洁中文提取图片中的主体、场景、关系、情绪和可用于对话的关键信息，控制在 120 字以内。",
-        timeoutMs: 12000
-      });
-      if (summary) {
-        updateUploadedAsset(assetId, { imageSummary: summary });
+      if (!asset.objectKey) {
+        throw new Error("图片尚未保存到对象存储。");
       }
+      const summary = await describeImageWithSiliconFlow({
+        imageUrl: signImageReadUrl(asset.objectKey),
+        prompt: "请用中文客观描述画面，优先识别可见文字、人物与物体、动作、场景和相互关系；区分确定信息与不确定推测，不要臆测情绪或经历。保留与后续对话有关的具体细节，控制在 400 字以内。",
+        timeoutMs: env.siliconFlowVisionTimeoutMs
+      });
+      if (!summary) {
+        throw new Error("视觉理解模型没有返回图片内容。");
+      }
+      updateUploadedAsset(assetId, { imageSummary: summary });
     } catch {
-      // Ignore background warmup failures. The final multimodal answer still uses the raw image.
-    } finally {
-      imageSummaryJobs.delete(assetId);
+      throw new Error("图片理解失败，请稍后重试。");
     }
   })();
 
   imageSummaryJobs.set(assetId, job);
+  void job.then(
+    () => imageSummaryJobs.delete(assetId),
+    () => imageSummaryJobs.delete(assetId)
+  );
   return job;
 }
 
 export function scheduleUploadedImageSummary(assetId: string): void {
-  void prepareUploadedImageSummary(assetId);
+  void prepareUploadedImageSummary(assetId).catch(() => {
+    // 前台发送时会重试，仍失败则明确提示用户。
+  });
 }

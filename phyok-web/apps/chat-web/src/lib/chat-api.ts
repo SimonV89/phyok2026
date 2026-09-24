@@ -734,7 +734,8 @@ export async function requestAccountDeletion(options: {
   const response = await fetch("/api/account/delete-request", {
     method: "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...buildClientHeaders()
     },
     body: JSON.stringify(options)
   });

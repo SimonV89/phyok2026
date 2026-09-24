@@ -17,12 +17,9 @@ export async function POST(request: Request) {
       }
     | null;
 
-  const userId = body?.userId?.trim() || "";
-  const requestedBy = body?.userEmail?.trim() || "";
-  const appId = body?.appId?.trim() || "phyok-chat-web";
   const reason = body?.reason?.trim() || "";
-
-  if (!userId || !requestedBy) {
+  const authorization = request.headers.get("authorization")?.trim();
+  if (!authorization?.startsWith("Bearer ")) {
     return NextResponse.json(
       {
         code: "DELETE_ACCOUNT_UNAUTHORIZED",
@@ -43,9 +40,31 @@ export async function POST(request: Request) {
   }
 
   const baseUrl = trimTrailingSlash(process.env.JAVA_PRIVACY_BASE_URL, "http://127.0.0.1:18088");
+  const authBaseUrl = trimTrailingSlash(process.env.JAVA_AUTH_BASE_URL, "http://127.0.0.1:18081");
   const requestId = `delete_${randomUUID()}`;
 
   try {
+    const identityResponse = await fetch(new URL("/internal/auth/verify-token", authBaseUrl), {
+      method: "POST",
+      headers: { Authorization: authorization, "X-Request-Id": requestId },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10000)
+    });
+    const identity = (await identityResponse.json().catch(() => null)) as {
+      code?: string;
+      data?: { tenantId?: string; appId?: string; userId?: string; email?: string; roles?: string[] };
+    } | null;
+    if (
+      !identityResponse.ok ||
+      identity?.code !== "OK" ||
+      !identity.data?.tenantId ||
+      !identity.data.appId ||
+      !identity.data.userId ||
+      !identity.data.email ||
+      !identity.data.roles?.includes("USER")
+    ) {
+      return NextResponse.json({ code: "DELETE_ACCOUNT_UNAUTHORIZED", message: "登录态已失效，请重新登录。" }, { status: 401 });
+    }
     const response = await fetch(new URL("/v2/privacy/delete-jobs", baseUrl), {
       method: "POST",
       headers: {
@@ -54,11 +73,11 @@ export async function POST(request: Request) {
         "X-Request-Id": requestId
       },
       body: JSON.stringify({
-        tenantId: "tenant-demo",
-        appId,
-        userId,
+        tenantId: identity.data.tenantId,
+        appId: identity.data.appId,
+        userId: identity.data.userId,
         scope: "USER_FULL_ERASURE",
-        requestedBy,
+        requestedBy: identity.data.email,
         reason
       }),
       cache: "no-store"

@@ -1014,13 +1014,29 @@ export function ChatShell() {
     setAccountMenuOpen((value) => !value);
   }, []);
   const handleAuthSuccess = useCallback((session: AuthSession) => {
+    if (authSession?.userId !== session.userId) {
+      streamAbortRef.current?.abort();
+      localStorage.removeItem(ACTIVE_RUN_STORAGE_KEY);
+      localStorage.removeItem(LAST_CONVERSATION_STORAGE_KEY);
+      pendingFilesRef.current.clear();
+      setHistorySummaries([]);
+      setHistoryTotal(0);
+      dispatch(startFreshConversation({ conversationId: createConversationId() }));
+    }
     setAuthSession(session);
     setAuthDialogOpen(false);
     setFeedbackContactEmail(session.email);
     setActiveModule("profile");
-  }, []);
+  }, [authSession?.userId, dispatch]);
   const handleLogout = useCallback(() => {
+    streamAbortRef.current?.abort();
     clearAuthSession();
+    localStorage.removeItem(ACTIVE_RUN_STORAGE_KEY);
+    localStorage.removeItem(LAST_CONVERSATION_STORAGE_KEY);
+    pendingFilesRef.current.clear();
+    setHistorySummaries([]);
+    setHistoryTotal(0);
+    dispatch(startFreshConversation({ conversationId: createConversationId() }));
     setAuthSession(null);
     setAccountMenuOpen(false);
     setActiveAccountDialog(null);
@@ -1029,7 +1045,7 @@ export function ChatShell() {
     setLastPaymentOrder(null);
     setPaymentFeedback("已退出当前账号。");
     setActiveModule("profile");
-  }, []);
+  }, [dispatch]);
   const handleSubmitComplaintFeedback = useCallback(async () => {
     setFeedbackSubmitting(true);
     setFeedbackMessage(null);
@@ -1839,10 +1855,18 @@ export function ChatShell() {
 
       try {
         setHistoryOpeningId(nextConversationId);
+        const sessionToken = getAuthSession()?.sessionToken;
         const history = await fetchConversationHistory({
           conversationId: nextConversationId,
           limit: 50
         });
+        if (!sessionToken || getAuthSession()?.sessionToken !== sessionToken) {
+          return;
+        }
+        if (history.items.length === 0) {
+          setHistoryError("这段会话已不可用，请新建对话。");
+          return;
+        }
         dispatch(
           replaceConversationMessages({
             conversationId: history.conversationId,
@@ -1886,6 +1910,13 @@ export function ChatShell() {
   }, []);
 
   useEffect(() => {
+    const sessionToken = getAuthSession()?.sessionToken;
+    if (!sessionToken) {
+      localStorage.removeItem(ACTIVE_RUN_STORAGE_KEY);
+      localStorage.removeItem(LAST_CONVERSATION_STORAGE_KEY);
+      setRecovering(false);
+      return;
+    }
     const raw = localStorage.getItem(ACTIVE_RUN_STORAGE_KEY);
     if (!raw) {
       setRecovering(false);
@@ -1900,6 +1931,9 @@ export function ChatShell() {
           return;
         }
         const state = await fetchRunState(payload.runId);
+        if (getAuthSession()?.sessionToken !== sessionToken) {
+          return;
+        }
         dispatch(
           hydrateRunState({
             runId: state.runId,
@@ -1966,11 +2000,12 @@ export function ChatShell() {
   }, [recordingState]);
 
   useEffect(() => {
-    if (recovering || chat.messages.length > 0) {
+    const sessionToken = getAuthSession()?.sessionToken;
+    if (!sessionToken || recovering || chat.conversationId || chat.messages.length > 0) {
       return;
     }
 
-    const conversationId = chat.conversationId ?? localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY);
+    const conversationId = localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY);
     if (!conversationId) {
       return;
     }
@@ -1981,6 +2016,14 @@ export function ChatShell() {
           conversationId,
           limit: 50
         });
+        if (getAuthSession()?.sessionToken !== sessionToken) {
+          return;
+        }
+        if (history.items.length === 0) {
+          localStorage.removeItem(LAST_CONVERSATION_STORAGE_KEY);
+          dispatch(startFreshConversation({ conversationId: createConversationId() }));
+          return;
+        }
         dispatch(
           replaceConversationMessages({
             conversationId: history.conversationId,
@@ -2024,6 +2067,13 @@ export function ChatShell() {
     if (activeModule !== "history" && activeModule !== "memory-map") {
       return;
     }
+    if (!authSession?.sessionToken) {
+      setHistorySummaries([]);
+      setHistoryTotal(0);
+      setHistoryLoading(false);
+      setHistoryError(null);
+      return;
+    }
 
     let cancelled = false;
     const loadConversationSummaries = async () => {
@@ -2035,7 +2085,7 @@ export function ChatShell() {
           pageSize: HISTORY_PAGE_SIZE,
           keyword: historyKeyword
         });
-        if (cancelled) {
+        if (cancelled || getAuthSession()?.sessionToken !== authSession.sessionToken) {
           return;
         }
         if (page.items.length === 0 && page.total > 0 && historyPageNo > 1) {
@@ -2062,7 +2112,7 @@ export function ChatShell() {
     return () => {
       cancelled = true;
     };
-  }, [activeModule, historyKeyword, historyPageNo, historyRefreshKey]);
+  }, [activeModule, authSession?.sessionToken, historyKeyword, historyPageNo, historyRefreshKey]);
 
   const handleDeleteHistoryConversation = useCallback(
     async (conversationId: string) => {

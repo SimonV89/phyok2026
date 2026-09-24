@@ -62,9 +62,11 @@ type ChatRunInput = {
   requestId: string;
   traceId: string;
   appId: string;
+  deviceId?: string;
   userId: string;
   sessionId: string;
   userEmail?: string;
+  ownerScope: string;
   conversationId: string;
   message: string;
   attachments: ChatV2Attachment[];
@@ -111,6 +113,7 @@ type PersistedChatRunStore = {
 const HEARTBEAT_MS = 12000;
 const CHAT_RUN_STORE_VERSION = 1;
 const RUN_TTL_MS = env.chatHistoryRetentionDays * 24 * 60 * 60 * 1000;
+const GUEST_USER_ID = "guest_anonymous";
 const runs = new Map<string, ChatRunState>();
 let persistQueue = Promise.resolve();
 
@@ -130,6 +133,20 @@ function extractErrorCode(error: unknown): string | undefined {
   return code.length > 0 ? code : undefined;
 }
 
+function deriveOwnerScopeFromPersistedInput(
+  input: Partial<PersistedChatRunState["input"]>,
+  fallbackKey: string
+): string {
+  // Existing records used client-supplied headers; they cannot be safely attributed.
+  return typeof input.ownerScope === "string" && input.ownerScope.startsWith("verified:")
+    ? input.ownerScope
+    : `legacy-orphan:${fallbackKey}`;
+}
+
+function doesRunBelongToScope(run: ChatRunState, ownerScope: string): boolean {
+  return run.input.ownerScope === ownerScope;
+}
+
 function toPersistedRun(run: ChatRunState): PersistedChatRunState {
   return {
     runId: run.runId,
@@ -137,9 +154,11 @@ function toPersistedRun(run: ChatRunState): PersistedChatRunState {
       requestId: run.input.requestId,
       traceId: run.input.traceId,
       appId: run.input.appId,
+      deviceId: run.input.deviceId,
       userId: run.input.userId,
       sessionId: run.input.sessionId,
       userEmail: run.input.userEmail,
+      ownerScope: run.input.ownerScope,
       conversationId: run.input.conversationId,
       message: run.input.message,
       attachments: run.input.attachments
@@ -174,9 +193,11 @@ function hydratePersistedRun(record: PersistedChatRunState, now: number): ChatRu
       requestId: record.input.requestId,
       traceId: record.input.traceId,
       appId: record.input.appId,
+      deviceId: record.input.deviceId,
       userId: record.input.userId,
       sessionId: record.input.sessionId,
       userEmail: record.input.userEmail,
+      ownerScope: deriveOwnerScopeFromPersistedInput(record.input, record.runId),
       conversationId: record.input.conversationId,
       message: record.input.message,
       attachments: record.input.attachments
@@ -346,6 +367,7 @@ async function runPipeline(run: ChatRunState): Promise<void> {
   try {
     const result = await executeSelfExploreFlow({
       runId: run.runId,
+      ownerScope: run.input.ownerScope,
       requestId: run.input.requestId,
       conversationId: run.input.conversationId,
       query: run.input.message,
@@ -424,6 +446,8 @@ export function createChatRun(input: {
   requestId: string;
   traceId: string;
   appId: string;
+  ownerScope: string;
+  deviceId?: string;
   userId?: string;
   sessionId?: string;
   userEmail?: string;
@@ -442,6 +466,7 @@ export function createChatRun(input: {
     size: Number.isFinite(item.size) ? Number(item.size) : 0,
     kind: item.kind ?? inferAttachmentKind(item.mimeType?.trim() || "")
   }));
+  const ownerScope = input.ownerScope;
 
   const run: ChatRunState = {
     runId,
@@ -450,9 +475,11 @@ export function createChatRun(input: {
       requestId: input.requestId,
       traceId: input.traceId,
       appId: input.appId,
-      userId: input.userId?.trim() || "guest_anonymous",
+      deviceId: input.deviceId?.trim() || undefined,
+      userId: input.userId?.trim() || GUEST_USER_ID,
       sessionId: input.sessionId?.trim() || `sess_${runId}`,
       userEmail: input.userEmail?.trim() || undefined,
+      ownerScope,
       conversationId,
       message: input.message.trim(),
       attachments
@@ -480,13 +507,21 @@ export function createChatRun(input: {
   return run;
 }
 
-export function getChatRun(runId: string): ChatRunState | null {
+function getChatRun(runId: string): ChatRunState | null {
   pruneRuns();
   return runs.get(runId) ?? null;
 }
 
-export function getChatRunSnapshot(runId: string) {
+function getChatRunForScope(runId: string, ownerScope: string): ChatRunState | null {
   const run = getChatRun(runId);
+  if (!run || !doesRunBelongToScope(run, ownerScope)) {
+    return null;
+  }
+  return run;
+}
+
+export function getChatRunSnapshot(runId: string, ownerScope: string) {
+  const run = getChatRunForScope(runId, ownerScope);
   if (!run) {
     return null;
   }
@@ -507,6 +542,7 @@ export function getChatRunSnapshot(runId: string) {
 }
 
 export function getConversationHistoryPage(options: {
+  ownerScope: string;
   conversationId: string;
   cursor?: string;
   limit: number;
@@ -520,7 +556,7 @@ export function getConversationHistoryPage(options: {
   pruneRuns();
 
   const allItems = [...runs.values()]
-    .filter((run) => run.input.conversationId === options.conversationId)
+    .filter((run) => run.input.conversationId === options.conversationId && doesRunBelongToScope(run, options.ownerScope))
     .sort((left, right) => left.createdAt - right.createdAt)
     .flatMap<ChatHistoryItem>((run) => {
       const userTurn: ChatHistoryItem = {
@@ -566,6 +602,7 @@ export function getConversationHistoryPage(options: {
 }
 
 export function getConversationSummaryPage(options: {
+  ownerScope: string;
   pageNo: number;
   pageSize: number;
   keyword?: string;
@@ -579,6 +616,9 @@ export function getConversationSummaryPage(options: {
 
   const grouped = new Map<string, ChatRunState[]>();
   for (const run of runs.values()) {
+    if (!doesRunBelongToScope(run, options.ownerScope)) {
+      continue;
+    }
     const list = grouped.get(run.input.conversationId);
     if (list) {
       list.push(run);
@@ -641,7 +681,7 @@ export function getConversationSummaryPage(options: {
   };
 }
 
-export function deleteConversationHistory(conversationId: string): {
+export function deleteConversationHistory(ownerScope: string, conversationId: string): {
   deleted: boolean;
   deletedRuns: number;
   conversationId: string;
@@ -657,7 +697,7 @@ export function deleteConversationHistory(conversationId: string): {
 
   let deletedRuns = 0;
   for (const [runId, run] of runs) {
-    if (run.input.conversationId !== targetConversationId) {
+    if (run.input.conversationId !== targetConversationId || !doesRunBelongToScope(run, ownerScope)) {
       continue;
     }
 
@@ -685,8 +725,8 @@ export function deleteConversationHistory(conversationId: string): {
   };
 }
 
-export function stopChatRun(runId: string): { found: boolean; stopped: boolean; status?: ChatV2RunStatus } {
-  const run = getChatRun(runId);
+export function stopChatRun(runId: string, ownerScope: string): { found: boolean; stopped: boolean; status?: ChatV2RunStatus } {
+  const run = getChatRunForScope(runId, ownerScope);
   if (!run) {
     return { found: false, stopped: false };
   }
@@ -699,11 +739,12 @@ export function stopChatRun(runId: string): { found: boolean; stopped: boolean; 
 
 export function attachChatRunStream(options: {
   runId: string;
+  ownerScope: string;
   reply: ServerResponse;
   fromSeq?: number;
   headers?: Record<string, string>;
 }): { found: boolean; close: () => void } {
-  const run = getChatRun(options.runId);
+  const run = getChatRunForScope(options.runId, options.ownerScope);
   if (!run) {
     return { found: false, close: () => undefined };
   }
@@ -765,4 +806,25 @@ export function attachChatRunStream(options: {
   };
 
   return { found: true, close };
+}
+
+export function inspectConversationAccess(conversationId: string, ownerScope: string): {
+  exists: boolean;
+  allowed: boolean;
+} {
+  const targetConversationId = conversationId.trim();
+  if (!targetConversationId) {
+    return { exists: false, allowed: false };
+  }
+  let exists = false;
+  for (const run of runs.values()) {
+    if (run.input.conversationId !== targetConversationId) {
+      continue;
+    }
+    exists = true;
+    if (doesRunBelongToScope(run, ownerScope)) {
+      return { exists: true, allowed: true };
+    }
+  }
+  return { exists, allowed: !exists };
 }
