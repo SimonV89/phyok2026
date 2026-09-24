@@ -1,12 +1,33 @@
-# 心理学空间·自我探索Agent Pro
+<h1 align="center">心理学空间 · 自我探索 Agent Pro</h1>
 
-🔗 在线访问：https://www.phyok.com
+<p align="center">
+  以记忆为线索，在对话中学习心理学、探索自我。
+</p>
+
+<p align="center">
+  <a href="https://www.phyok.com">在线体验</a> ·
+  <a href="#1-概述">核心功能</a> ·
+  <a href="#2-架构">技术架构</a> ·
+  <a href="#3-运行与部署">运行与部署</a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-15-black?logo=nextdotjs" alt="Next.js 15" />
+  <img src="https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white" alt="React 19" />
+  <img src="https://img.shields.io/badge/Node.js-BFF-339933?logo=nodedotjs&logoColor=white" alt="Node.js BFF" />
+  <img src="https://img.shields.io/badge/Java-21-ed8b00?logo=openjdk&logoColor=white" alt="Java 21" />
+  <img src="https://img.shields.io/badge/K3s%20%2F%20K8s-Deployment-326ce5?logo=kubernetes&logoColor=white" alt="K3s 与 K8s 部署" />
+</p>
 
 <p align="center">
   <img src="imgs/PC-.png" width="85%" alt="心理学空间 PC 端" />
 </p>
 
-`心理学空间·自我探索Agent Pro` 是一个围绕"心理学学习、自我探索、记忆沉淀与记忆修复"构建的 AI Agent 对话平台。整站打通了 Web 对话端、Node BFF / Agent Runtime、Java 微服务、支付/审计与记忆星图等核心链路，支持本地 Docker 联调与 K3s/K8s 部署。工程化架构以抗熵增、便于 AI 代码 Review、长期可维护为目标，由作者 `SimonWZB` 全栈开发并开源分享，欢迎一起把它做得更好。
+## 项目简介
+
+心理学空间 · 自我探索 Agent Pro 是一个面向心理学学习与自我探索的 AI 对话项目。它将多模态对话、长期记忆与记忆星图结合起来，让探索有迹可循；同时以 Next.js、Node BFF 和 Java 微服务构建可持续演进的工程基础。由 SimonWZB 独立开发，欢迎交流与指正。
+
+> **提示**：本项目用于心理学学习与自我探索，不能替代专业心理咨询、医疗诊断或紧急援助。
 
 ## 1. 概述
 
@@ -87,6 +108,17 @@
   - peer link 相似度优化
   - 记忆修复、删除与隐私擦除链路完善
 
+#### H5 界面预览
+
+<p align="center">
+  <img src="imgs/h5-1.jpg" width="24%" alt="H5 首页" />
+  <img src="imgs/h5-2.png" width="24%" alt="H5 记忆星图" />
+  <img src="imgs/h5-3.png" width="24%" alt="H5 左侧栏" />
+  <img src="imgs/h5-4.png" width="24%" alt="H5 套餐支付" />
+</p>
+
+<p align="center">首页对话 · 记忆星图 · 左侧栏 · 套餐支付</p>
+
 ### Java 微服务架构
 
 #### 技术选型
@@ -140,15 +172,6 @@
   - `React 19` 便于构建高交互密度的聊天 UI、登录弹窗、历史会话、星图面板等客户端模块。
   - `Redux Toolkit` 适合承载 SSE 流式状态、运行态、历史恢复、自动滚动、附件状态等复杂前端状态。
   - 当前前端主应用是 `phyok-web/apps/chat-web`，核心对话壳层在 `src/features/chat/ChatShell.tsx`。
-
-<p align="center">
-  <img src="imgs/h5-1.jpg" width="24%" alt="H5 首页" />
-  <img src="imgs/h5-2.png" width="24%" alt="H5 记忆星图" />
-  <img src="imgs/h5-3.png" width="24%" alt="H5 左侧栏" />
-  <img src="imgs/h5-4.png" width="24%" alt="H5 套餐支付" />
-</p>
-
-<p align="center" style="color:#888;font-size:13px;margin-top:4px">H5 端：首页对话 · 记忆星图 · 左侧栏 · 套餐支付</p>
 
 #### 部署与运维
 
