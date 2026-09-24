@@ -9,6 +9,7 @@ import {
 
 const DOCUMENT_TEXT_LIMIT = 12000;
 const DOCUMENT_SUMMARY_LIMIT = 1800;
+const documentPreparationJobs = new Map<string, Promise<StoredAsset | undefined>>();
 
 function normalizeText(input: string): string {
   return input.replace(/\u0000/g, " ").replace(/\s+/g, " ").trim();
@@ -85,35 +86,51 @@ export async function prepareUploadedAsset(assetId: string): Promise<StoredAsset
     return getUploadedAsset(assetId);
   }
 
+  const existingJob = documentPreparationJobs.get(assetId);
+  if (existingJob) {
+    return existingJob;
+  }
+
   updateUploadedAsset(assetId, {
     parseStatus: "parsing",
     parseError: undefined
   });
 
-  try {
-    const rawText = await extractDocumentText(asset);
-    const normalizedText = normalizeText(rawText);
-    if (!normalizedText) {
+  const job = (async () => {
+    try {
+      const rawText = await extractDocumentText(asset);
+      const normalizedText = normalizeText(rawText);
+      if (!normalizedText) {
+        updateUploadedAsset(assetId, {
+          parseStatus: "failed",
+          parseError: "文档内容为空或暂时无法提取可读文本。"
+        });
+        return getUploadedAsset(assetId);
+      }
+
       updateUploadedAsset(assetId, {
-        parseStatus: "failed",
-        parseError: "文档内容为空或暂时无法提取可读文本。"
+        parseStatus: "parsed",
+        documentText: clampText(normalizedText, DOCUMENT_TEXT_LIMIT),
+        documentSummary: buildDocumentSummary(normalizedText),
+        textPreview: clampText(normalizedText, Math.min(DOCUMENT_SUMMARY_LIMIT, 2400)),
+        parseError: undefined
       });
-      return getUploadedAsset(assetId);
+    } catch (error) {
+    updateUploadedAsset(assetId, {
+        parseStatus: "failed",
+        parseError: error instanceof Error ? error.message : "文档解析失败。"
+      });
+    } finally {
+      documentPreparationJobs.delete(assetId);
     }
 
-    updateUploadedAsset(assetId, {
-      parseStatus: "parsed",
-      documentText: clampText(normalizedText, DOCUMENT_TEXT_LIMIT),
-      documentSummary: buildDocumentSummary(normalizedText),
-      textPreview: clampText(normalizedText, Math.min(DOCUMENT_SUMMARY_LIMIT, 2400)),
-      parseError: undefined
-    });
-  } catch (error) {
-    updateUploadedAsset(assetId, {
-      parseStatus: "failed",
-      parseError: error instanceof Error ? error.message : "文档解析失败。"
-    });
-  }
+    return getUploadedAsset(assetId);
+  })();
 
-  return getUploadedAsset(assetId);
+  documentPreparationJobs.set(assetId, job);
+  return job;
+}
+
+export function scheduleUploadedAssetPreparation(assetId: string): void {
+  void prepareUploadedAsset(assetId);
 }

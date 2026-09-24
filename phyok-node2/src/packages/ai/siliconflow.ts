@@ -244,6 +244,7 @@ export async function describeImageWithSiliconFlow(options: {
   mimeType: string;
   prompt: string;
   signal?: AbortSignal;
+  timeoutMs?: number;
 }): Promise<string> {
   const imageUrl = bufferToDataUrl(options.buffer, options.mimeType);
   const messages: ChatMessage[] = [
@@ -276,7 +277,7 @@ export async function describeImageWithSiliconFlow(options: {
         model,
         messages,
         signal: options.signal,
-        timeoutMs: env.siliconFlowVisionTimeoutMs
+        timeoutMs: options.timeoutMs ?? env.siliconFlowVisionTimeoutMs
       });
       if (result) {
         return result;

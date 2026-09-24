@@ -7,8 +7,9 @@ import {
   ERROR_CODES,
   extractExternalHeaders
 } from "../../packages/contracts/api";
-import { prepareUploadedAsset } from "./asset-parser";
+import { scheduleUploadedAssetPreparation } from "./asset-parser";
 import { saveUploadedAsset } from "./asset-store";
+import { scheduleUploadedImageSummary } from "./asset-vision";
 import type { UploadAssetKind } from "./types";
 
 function inferAssetKind(mimeType: string): UploadAssetKind {
@@ -98,7 +99,11 @@ export const mediaV2Routes = async (app: FastifyInstance) => {
       buffer: fileBuffer ?? Buffer.alloc(0)
     });
 
-    const preparedAsset = kind === "document" ? await prepareUploadedAsset(assetId) : asset;
+    if (kind === "document") {
+      scheduleUploadedAssetPreparation(assetId);
+    } else if (kind === "image") {
+      scheduleUploadedImageSummary(assetId);
+    }
 
     await reply.send(
       createSuccess(externalHeaders.requestId, {
@@ -112,7 +117,7 @@ export const mediaV2Routes = async (app: FastifyInstance) => {
         conversationId: conversationId || null,
         fieldCount,
         status: "uploaded",
-        parseStatus: preparedAsset?.parseStatus ?? (kind === "other" ? "uploaded" : "parsed"),
+        parseStatus: kind === "document" ? "parsing" : asset.parseStatus,
         uploadedAt: Date.now()
       })
     );

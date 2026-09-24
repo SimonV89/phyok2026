@@ -6,7 +6,6 @@ import { ERROR_CODES } from "../../contracts/api";
 import type { StreamEventName, SseEventPayloadMap } from "../../contracts/sse";
 import {
   bufferToDataUrl,
-  describeImageWithSiliconFlow,
   streamSiliconFlowChat,
   type ChatMessage,
   transcribeAudioWithSiliconFlow
@@ -541,20 +540,12 @@ async function buildAttachmentSummary(
         parseStatus: asset.parseStatus
       };
     }
-    const summary = await describeImageWithSiliconFlow({
-      buffer: asset.buffer,
-      mimeType: asset.mimeType,
-      prompt:
-        "请从心理探索和对话辅助角度描述这张图片，重点提取可用于后续聊天的场景、人物关系、情绪线索、身体状态、文本信息。",
-      signal
-    });
-    updateUploadedAsset(asset.assetId, { imageSummary: summary });
     return {
       id: attachment.id,
       name: attachment.name,
       kind: attachment.kind,
       mimeType: attachment.mimeType,
-      summary: `${attachment.name}：${summary}`,
+      summary: `${attachment.name}：已接收图片，本轮会直接结合图像内容理解，不再等待额外视觉预处理。`,
       parseStatus: asset.parseStatus
     };
   }
@@ -599,7 +590,12 @@ async function buildAttachmentSummary(
   }
 
   if (attachment.kind === "document") {
-    const preparedAsset = asset.parseStatus === "parsed" ? asset : await prepareUploadedAsset(asset.assetId);
+    let preparedAsset = asset;
+    if (asset.parseStatus === "uploaded") {
+      preparedAsset = (await prepareUploadedAsset(asset.assetId)) ?? asset;
+    } else if (asset.parseStatus === "parsing") {
+      preparedAsset = getUploadedAsset(asset.assetId) ?? asset;
+    }
     if (!preparedAsset) {
       return {
         id: attachment.id,
@@ -618,6 +614,17 @@ async function buildAttachmentSummary(
         mimeType: attachment.mimeType,
         summary: `${attachment.name}：文档理解为「${preparedAsset.documentSummary}」`,
         extractedText: clampPromptText(preparedAsset.documentText || preparedAsset.documentSummary, 3600),
+        parseStatus: preparedAsset.parseStatus
+      };
+    }
+    if (preparedAsset.parseStatus === "parsing") {
+      return {
+        id: attachment.id,
+        name: attachment.name,
+        kind: attachment.kind,
+        mimeType: attachment.mimeType,
+        summary: `${attachment.name}：文档内容仍在后台提取中，本轮先不阻塞回复；若你需要完整结合文档，请稍等片刻再发送。`,
+        extractedText: preparedAsset.textPreview ? clampPromptText(preparedAsset.textPreview, 1800) : undefined,
         parseStatus: preparedAsset.parseStatus
       };
     }
