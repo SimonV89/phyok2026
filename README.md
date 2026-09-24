@@ -5,17 +5,18 @@
 </p>
 
 <p align="center">
-  <a href="https://www.phyok.com">在线体验</a> ·
-  <a href="#1-概述">核心功能</a> ·
-  <a href="#2-架构">技术架构</a> ·
-  <a href="#3-运行与部署">运行与部署</a>
+  <a href="https://www.phyok.com">🌐 在线体验</a> ·
+  <a href="#1-概述">✨ 核心功能</a> ·
+  <a href="#2-架构">🧭 技术架构</a> ·
+  <a href="#3-运行与部署">🚀 运行与部署</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Next.js-15-black?logo=nextdotjs" alt="Next.js 15" />
+  <img src="https://img.shields.io/badge/Spring%20Cloud-2023-6db33f?logo=spring&logoColor=white" alt="Spring Cloud 2023" />
+  <img src="https://img.shields.io/badge/Agent-LangGraph%20%E8%AE%BE%E8%AE%A1%E6%96%B9%E5%90%91-7353ba" alt="Agent：LangGraph 设计方向" />
   <img src="https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white" alt="React 19" />
+  <img src="https://img.shields.io/badge/Next.js-15-black?logo=nextdotjs" alt="Next.js 15" />
   <img src="https://img.shields.io/badge/Node.js-BFF-339933?logo=nodedotjs&logoColor=white" alt="Node.js BFF" />
-  <img src="https://img.shields.io/badge/Java-21-ed8b00?logo=openjdk&logoColor=white" alt="Java 21" />
   <img src="https://img.shields.io/badge/K3s%20%2F%20K8s-Deployment-326ce5?logo=kubernetes&logoColor=white" alt="K3s 与 K8s 部署" />
 </p>
 
@@ -29,6 +30,8 @@
 
 > **提示**：本项目用于心理学学习与自我探索，不能替代专业心理咨询、医疗诊断或紧急援助。
 
+> **使用许可**：源码按 [PolyForm Noncommercial 1.0.0](LICENSE) 提供；非商业使用可遵循协议，商业使用须事先取得作者单独授权。本许可不属于 OSI 定义的开源许可证。
+
 ## 1. 概述
 
 ### 核心功能
@@ -38,6 +41,17 @@
 - Agent 编排：以 node(BFF) 中的自我探索流程为主线，围绕心理学学习、自我探索、潜意识与原生家庭、困扰根因等意图进行多轮对话，并完成意图识别、记忆门槛校验、记忆/知识召回、证据拼装、模型收口与 SSE 输出。
 - 多模态输入：支持文本、图片、语音、文件等输入，并在 node(BFF) 层做统一预处理。
 - 工程化部署：支持本地单服务运行、Docker Compose 整套联调，以及 K3s/K8s 远程部署与运维脚本。
+
+### H5 界面预览
+
+<p align="center">
+  <img src="imgs/h5-1.jpg" width="24%" alt="H5 首页" />
+  <img src="imgs/h5-2.png" width="24%" alt="H5 记忆星图" />
+  <img src="imgs/h5-3.png" width="24%" alt="H5 左侧栏" />
+  <img src="imgs/h5-4.png" width="24%" alt="H5 套餐支付" />
+</p>
+
+<p align="center">首页对话 · 记忆星图 · 左侧栏 · 套餐支付</p>
 
 ## 2. 架构
 
@@ -108,16 +122,13 @@
   - peer link 相似度优化
   - 记忆修复、删除与隐私擦除链路完善
 
-#### H5 界面预览
+### CMS 运营后台
 
 <p align="center">
-  <img src="imgs/h5-1.jpg" width="24%" alt="H5 首页" />
-  <img src="imgs/h5-2.png" width="24%" alt="H5 记忆星图" />
-  <img src="imgs/h5-3.png" width="24%" alt="H5 左侧栏" />
-  <img src="imgs/h5-4.png" width="24%" alt="H5 套餐支付" />
+  <img src="imgs/cms-1.png" width="80%" alt="CMS 运营后台" />
 </p>
 
-<p align="center">首页对话 · 记忆星图 · 左侧栏 · 套餐支付</p>
+<p align="center">用户、付费订单、投诉反馈与审计事件管理</p>
 
 ### Java 微服务架构
 
@@ -194,14 +205,6 @@
   - `audit-service`：审计事件写入与查询
   - 其他：`tenant-service`、`privacy-service`、`knowledge-service`、`ops-admin-service`
 - `deploy`：Compose、K3s/K8s、Nginx 与运维脚本
-
-### CMS 运营后台
-
-<p align="center">
-  <img src="imgs/cms-1.png" width="80%" alt="CMS 运营后台" />
-</p>
-
-<p align="center" style="color:#888;font-size:13px;margin-top:4px">CMS 运营后台：用户、付费订单、投诉反馈、审计事件一站式管理</p>
 
 ## 3. 运行与部署
 
@@ -479,3 +482,9 @@ cp env2.example env2
 - node(BFF) 说明：`phyok-node2/README.md`
 - Compose 说明：`deploy/compose/README.md`
 - K3s/K8s 说明：`deploy/k8s/SINGLE_NODE_K3S_GUIDE.md`
+
+### 使用许可与商业授权
+
+本仓库中由作者持有著作权的代码按 [PolyForm Noncommercial 1.0.0](LICENSE) 提供，允许在协议范围内进行非商业使用、修改与分享。**商业使用不在该许可范围内**，请先联系作者 SimonWZB（[simon.wzb@qq.com](mailto:simon.wzb@qq.com)）取得单独书面授权。本协议含非商业限制，因此不属于 OSI 定义的开源许可证。
+
+第三方依赖及其许可证仍由各自权利人规定，不因本仓库许可证而改变；新许可也不追溯改变此前版本已经依法授予的权利。
