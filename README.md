@@ -2,16 +2,11 @@
 
 🔗 在线访问：https://www.phyok.com
 
-## H5 端预览
-
 <p align="center">
-  <img src="imgs/h5-1.jpg" width="24%" alt="H5 首页" />
-  <img src="imgs/h5-2.png" width="24%" alt="H5 记忆星图" />
-  <img src="imgs/h5-3.png" width="24%" alt="H5 左侧栏" />
-  <img src="imgs/h5-4.png" width="24%" alt="H5 套餐与支付" />
+  <img src="imgs/PC-.png" width="85%" alt="心理学空间 PC 端" />
 </p>
 
-<p align="center" style="color:#888;font-size:13px;margin-top:4px">首页对话 · 记忆星图 · 左侧栏 · 套餐支付</p>
+`心理学空间·自我探索Agent Pro` 是一个围绕"心理学学习、自我探索、记忆沉淀与记忆修复"构建的 AI Agent 对话平台。整站打通了 Web 对话端、Node BFF / Agent Runtime、Java 微服务、支付/审计与记忆星图等核心链路，支持本地 Docker 联调与 K3s/K8s 部署。工程化架构以抗熵增、便于 AI 代码 Review、长期可维护为目标，由作者 `SimonWZB` 全栈开发并开源分享，欢迎一起把它做得更好。
 
 ## 1. 概述
 
@@ -145,6 +140,15 @@
   - `React 19` 便于构建高交互密度的聊天 UI、登录弹窗、历史会话、星图面板等客户端模块。
   - `Redux Toolkit` 适合承载 SSE 流式状态、运行态、历史恢复、自动滚动、附件状态等复杂前端状态。
   - 当前前端主应用是 `phyok-web/apps/chat-web`，核心对话壳层在 `src/features/chat/ChatShell.tsx`。
+
+<p align="center">
+  <img src="imgs/h5-1.jpg" width="24%" alt="H5 首页" />
+  <img src="imgs/h5-2.png" width="24%" alt="H5 记忆星图" />
+  <img src="imgs/h5-3.png" width="24%" alt="H5 左侧栏" />
+  <img src="imgs/h5-4.png" width="24%" alt="H5 套餐支付" />
+</p>
+
+<p align="center" style="color:#888;font-size:13px;margin-top:4px">H5 端：首页对话 · 记忆星图 · 左侧栏 · 套餐支付</p>
 
 #### 部署与运维
 
